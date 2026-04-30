@@ -1,0 +1,178 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0a0a;
+  --surface:   #111111;
+  --border:    #2a2a2a;
+  --green:     #00ff41;
+  --green-dim: #007a1f;
+  --text:      #c8c8c8;
+  --text-dim:  #555;
+  --gold:      #ffd700;
+  --red:       #ff4444;
+}
+
+html, body {
+  width: 100vw; max-width: 100vw; height: 100dvh;
+  background: var(--bg); color: var(--text);
+  font-family: 'Courier New', monospace;
+  overflow-x: hidden; overflow-y: auto;
+  -webkit-font-smoothing: none;
+}
+
+#scanlines {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px, transparent 3px,
+    rgba(0,0,0,0.18) 3px, rgba(0,0,0,0.18) 4px
+  );
+}
+
+#auth-screen, #selector, #emulator-screen { position: relative; z-index: 10; }
+
+button:focus, .rom-item:focus, .auth-google-btn:focus {
+  outline: 2px solid var(--green); outline-offset: 2px; background: #0f1f0f;
+}
+
+/* ── AUTH ── */
+#auth-screen {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 100vh; width: 100vw; padding: 24px 16px;
+}
+.auth-logo { font-size: 11px; letter-spacing: 4px; color: var(--green); margin-bottom: 2px; }
+.auth-sub  { font-size: 8px; letter-spacing: 2px; color: var(--text-dim); margin-bottom: 24px; }
+.auth-card { width: 100%; border: 1px solid var(--border); background: var(--surface); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.auth-label { font-size: 8px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }
+.auth-google-btn { width: 100%; background: #111; border: 1px solid var(--green); color: var(--green); font-family: 'Courier New', monospace; font-size: 10px; letter-spacing: 2px; padding: 12px; cursor: pointer; text-transform: uppercase; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.1s; }
+.auth-google-btn:hover { background: #0f1f0f; }
+.auth-google-btn svg { flex-shrink: 0; pointer-events: none; }
+.auth-status { font-size: 9px; color: var(--text-dim); text-align: center; letter-spacing: 1px; min-height: 14px; }
+.auth-status.err { color: var(--red); }
+.auth-status.ok  { color: var(--green); }
+.auth-drive-note { font-size: 8px; color: var(--text-dim); letter-spacing: 1px; line-height: 1.6; border-top: 1px solid var(--border); padding-top: 8px; }
+.auth-drive-note span { color: var(--green); }
+.auth-user-bar { width: 100%; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border); padding: 6px 8px; margin-bottom: 8px; font-size: 8px; }
+.auth-user-name { color: var(--green); letter-spacing: 1px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auth-sign-out  { color: var(--text-dim); background: none; border: none; font-family: 'Courier New', monospace; font-size: 8px; cursor: pointer; letter-spacing: 1px; flex-shrink: 0; padding: 0 0 0 8px; }
+.auth-sign-out:hover { color: var(--red); }
+
+/* ── SELECTOR ── */
+#selector { display: none; flex-direction: column; align-items: center; padding: 12px 8px 60px; height: 100dvh; width: 100vw; overflow-y: auto; overflow-x: hidden; }
+.logo     { font-size: 11px; letter-spacing: 4px; color: var(--green); text-transform: uppercase; margin-bottom: 2px; }
+.logo-sub { font-size: 8px; letter-spacing: 2px; color: var(--text-dim); margin-bottom: 14px; }
+.gb-icon  { width: 48px; height: 48px; margin-bottom: 12px; image-rendering: pixelated; }
+.section-label { font-size: 8px; letter-spacing: 3px; color: var(--text-dim); text-transform: uppercase; align-self: flex-start; margin-left: 4px; margin-bottom: 6px; }
+
+.rom-refresh-btn { align-self: flex-end; background: none; border: 1px solid var(--border); color: var(--text-dim); font-family: 'Courier New', monospace; font-size: 8px; letter-spacing: 1px; padding: 3px 7px; cursor: pointer; margin-bottom: 6px; text-transform: uppercase; }
+.rom-refresh-btn:hover { border-color: var(--green); color: var(--green); }
+
+.rom-list { width: 100%; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.rom-list-msg { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; padding: 8px 4px; line-height: 1.6; }
+
+.rom-item { width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-family: 'Courier New', monospace; font-size: 11px; padding: 10px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: border-color 0.1s, background 0.1s; }
+.rom-item::before { content: '▶'; font-size: 8px; color: var(--green-dim); flex-shrink: 0; }
+.rom-item.selected { border-color: var(--green); background: #0f1f0f; }
+.rom-item.selected::before { color: var(--green); }
+.rom-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.rom-badge { font-size: 7px; letter-spacing: 1px; padding: 1px 4px; border: 1px solid var(--border); color: var(--text-dim); flex-shrink: 0; text-transform: uppercase; }
+.rom-badge.gb   { border-color: #007a1f; color: #00ff41; }
+.rom-badge.gbc  { border-color: #007a1f; color: #00ff41; }
+.rom-badge.gba  { border-color: #4a3f00; color: #ffd700; }
+.rom-badge.nes  { border-color: #4a0000; color: #ff6060; }
+.rom-badge.snes { border-color: #1a0050; color: #a080ff; }
+.rom-badge.ps1  { border-color: #001a4a; color: #6090ff; }
+.rom-badge.gg   { border-color: #3a1a00; color: #ff9030; }
+.rom-badge.sms  { border-color: #2a0a00; color: #ff7060; }
+.rom-badge.gen  { border-color: #3a0030; color: #ff60cc; }
+.rom-badge.sat  { border-color: #2a1a00; color: #ffb040; }
+.rom-badge.n64  { border-color: #001a00; color: #40dd40; }
+
+.selector-help-hint { font-size: 8px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 10px; align-self: flex-start; margin-left: 4px; }
+.selector-help-hint span { color: var(--gold); }
+.launch-hint { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 16px; }
+.launch-hint span { color: var(--green); }
+
+.keymap { width: 100%; border: 1px solid var(--border); padding: 8px; margin-bottom: 8px; }
+.keymap-title  { font-size: 8px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; margin-bottom: 6px; }
+.keymap-grid   { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 8px; }
+.keymap-row    { display: flex; justify-content: space-between; font-size: 9px; }
+.keymap-key    { color: var(--green); font-weight: bold; }
+.keymap-action { color: var(--text-dim); }
+
+.drive-setup-hint { width: 100%; border: 1px solid var(--border); padding: 8px; margin-bottom: 12px; font-size: 8px; line-height: 1.8; color: var(--text-dim); letter-spacing: 1px; }
+.drive-setup-hint .hint-title { color: var(--gold); letter-spacing: 2px; margin-bottom: 4px; }
+.drive-setup-hint code { color: var(--green); }
+
+/* ── EMULATOR SCREEN — BASE (portrait) ── */
+#emulator-screen {
+  display: none; flex-direction: column; align-items: center;
+  width: 100vw; height: 100vh; overflow: hidden;
+  background: #000; position: fixed; top: 0; left: 0;
+}
+.emu-topbar { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; background: var(--surface); border-bottom: 1px solid var(--border); gap: 4px; flex-shrink: 0; z-index: 20; }
+.emu-title { font-size: 9px; letter-spacing: 1px; color: var(--green); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.save-status { font-size: 8px; color: var(--text-dim); letter-spacing: 1px; flex-shrink: 0; transition: color 0.4s; }
+.save-status.active  { color: var(--green); }
+.save-status.saving  { color: var(--gold); }
+.save-status.warning { color: var(--red); }
+
+#emulator-wrapper { width: 100vw; flex: 1; background: #000; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+#emulator-wrapper canvas,
+#emulator-wrapper #canvas { width: 100% !important; height: 100% !important; display: block; image-rendering: pixelated; object-fit: contain; }
+
+/* Hide all EJS UI chrome */
+#emulator-wrapper .ejs_menu_bar, #emulator-wrapper .ejs_top_bar,
+#emulator-wrapper .ejs_virtualGamepad, #emulator-wrapper .ejs_virtualpad,
+#emulator-wrapper .ejs_controls, #emulator-wrapper .ejs_menu,
+#emulator-wrapper .ejs_button_container, #emulator-wrapper .ejs_pause_overlay,
+#emulator-wrapper [class*="ejs_virtual"], #emulator-wrapper [class*="ejs_menu"],
+#emulator-wrapper [class*="ejs_top"] { display: none !important; }
+
+.key-hints { width: 100%; background: var(--surface); border-top: 1px solid var(--border); padding: 4px 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 4px; flex-shrink: 0; }
+.hint-row    { display: flex; justify-content: space-between; font-size: 8px; }
+.hint-key    { color: var(--green); font-weight: bold; }
+.hint-action { color: var(--text-dim); }
+
+#loading-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; color: var(--green); font-size: 10px; letter-spacing: 2px; flex-direction: column; gap: 8px; z-index: 10; text-align: center; padding: 8px; }
+.loading-dot { display: inline-block; animation: blink 1s step-start infinite; }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* ── LANDSCAPE MODE ─────────────────────────────────────────────
+   Rotates the entire fixed emulator screen 90° CW.
+   After rotation width=viewport height, height=viewport width.
+   margin-left:100vw shifts the rotated element back into view.
+────────────────────────────────────────────────────────────────── */
+body.landscape #emulator-screen {
+  width: 100vh; height: 100vw;
+  transform: rotate(90deg); transform-origin: top left;
+  margin-left: 100vw;
+}
+body.landscape #emulator-wrapper { width: 100%; }
+body.landscape .key-hints        { display: none; }
+body.landscape .emu-topbar       { padding: 2px 6px; }
+
+/* ── KEYBINDS OVERLAY ── */
+#keybinds-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 99998; flex-direction: column; align-items: center; justify-content: center; padding: 12px; }
+#keybinds-overlay.visible { display: flex; }
+body.landscape #keybinds-overlay { width: 100vh; height: 100vw; transform: rotate(90deg); transform-origin: top left; margin-left: 100vw; }
+
+.keybinds-title   { font-size: 9px; letter-spacing: 3px; color: var(--green); text-transform: uppercase; margin-bottom: 10px; }
+.keybinds-grid    { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.keybinds-row     { display: flex; justify-content: space-between; font-size: 9px; border-bottom: 1px solid #1a1a1a; padding-bottom: 3px; }
+.keybinds-key     { color: var(--green); font-weight: bold; }
+.keybinds-action  { color: var(--text-dim); }
+.keybinds-section { grid-column: 1 / -1; font-size: 7px; letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase; margin-top: 6px; margin-bottom: 2px; }
+.keybinds-close   { font-size: 8px; color: var(--text-dim); letter-spacing: 2px; margin-top: 12px; }
+.keybinds-close span { color: var(--gold); }
+
+/* ── SAVE CONFIRM ── */
+#save-confirm { display: none; position: fixed; top: 0; left: 0; width: 100vw; background: rgba(0,0,0,0.95); border-bottom: 1px solid var(--red); padding: 8px; z-index: 9999; flex-direction: column; gap: 4px; }
+#save-confirm.visible { display: flex; }
+body.landscape #save-confirm { width: 100vh; transform: rotate(90deg); transform-origin: top left; margin-left: 100vw; }
+
+.confirm-title { font-size: 8px; letter-spacing: 2px; color: var(--red); text-transform: uppercase; }
+.confirm-msg   { font-size: 9px; color: var(--text); }
+.confirm-hint  { font-size: 8px; color: var(--text-dim); letter-spacing: 1px; }
+.confirm-hint span { color: var(--gold); }
