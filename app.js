@@ -849,24 +849,14 @@ document.addEventListener('keydown', (e) => {
 // ══════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════
-let _authTimer = null;
+// No auth timer needed — driveApiFetch() in auth.js now silently
+// refreshes the Google Drive access token on every 401, using the
+// Cloudflare Worker as a fallback. The user never notices a token expiry.
 
 window.onAuthSuccess = function(user) {
   dbg('Auth success: ' + user.name + ' | screen: ' + SCREEN.toString());
   document.getElementById('selector').style.display = 'flex';
   discoverRoms();
-  
-  // 55-Minute Timer for Drive Token Expiration (3300000 milliseconds)
-  if (_authTimer) clearTimeout(_authTimer);
-  _authTimer = setTimeout(async () => {
-    _setSaveStatus('TOKEN EXPIRING!', 'warning');
-    
-    if (_currentRom && window.EJS_emulator) {
-      dbg('Auto-saving before token expiration...');
-      await _doSave(); 
-      _setSaveStatus('RE-AUTH NEEDED', 'warning');
-    }
-  }, 3300000); 
 };
 
 if (window.currentUser) window.onAuthSuccess(window.currentUser);

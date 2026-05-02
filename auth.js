@@ -3,6 +3,11 @@
 const SUPABASE_URL = "https://dvaqqcqvgletpuqmfsxz.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2YXFxY3F2Z2xldHB1cW1mc3h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTE4NzAsImV4cCI6MjA5MTI4Nzg3MH0.gLNT7QEVD7UJB7RT0hgpNCXIHYQXoNhW0_7kbYmDu4Q";
 
+// ── WORKER URL ────────────────────────────────────────────────────────────────
+// Set this to your deployed Cloudflare Worker URL after running `wrangler deploy`.
+// Example: "https://token-refresh.YOUR-SUBDOMAIN.workers.dev"
+const WORKER_URL = "/api/token-refresh";
+
 window.SUPABASE_URL      = SUPABASE_URL;
 window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 window.currentUser       = null;
@@ -13,7 +18,7 @@ let _supabase = null;
 
 // ── DOM Listeners & Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  const loginBtn  = document.getElementById('google-login-btn');
+  const loginBtn   = document.getElementById('google-login-btn');
   const signOutBtn = document.getElementById('sign-out-btn');
 
   if (loginBtn)   loginBtn.addEventListener('click', signInWithGoogle);
@@ -52,7 +57,7 @@ async function initAuth() {
       _authReadyResolve(null);
       return;
     }
-    window._providerToken = session.provider_token;
+    window._providerToken        = session.provider_token;
     window._providerRefreshToken = session.provider_refresh_token || null;
     handleSignedIn(session.user);
   } else {
@@ -62,16 +67,15 @@ async function initAuth() {
 
   _supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session?.user) {
-      window._providerToken = session.provider_token || null;
+      window._providerToken        = session.provider_token || null;
       window._providerRefreshToken = session.provider_refresh_token || null;
       handleSignedIn(session.user);
     } else if (event === 'SIGNED_OUT') {
       handleSignedOut();
     } else if (event === 'TOKEN_REFRESHED' && session) {
-      // Update provider token if it changed
       if (session.provider_token) {
         window._providerToken = session.provider_token;
-        dbgAuth('Provider token refreshed');
+        dbgAuth('Provider token refreshed via Supabase');
       }
     }
   });
@@ -86,7 +90,7 @@ function handleSignedIn(user) {
   };
   window._supabaseClient = _supabase;
   dbgAuth('Signed in: ' + window.currentUser.name);
-  dbgAuth('provider_token present: ' + !!window._providerToken);
+  dbgAuth('provider_token present: '         + !!window._providerToken);
   dbgAuth('provider_refresh_token present: ' + !!window._providerRefreshToken);
   hideAuthScreen();
   showUserBar();
@@ -96,8 +100,8 @@ function handleSignedIn(user) {
 }
 
 function handleSignedOut() {
-  window.currentUser       = null;
-  window._providerToken    = null;
+  window.currentUser           = null;
+  window._providerToken        = null;
   window._providerRefreshToken = null;
   dbgAuth('Signed out');
   showAuthScreen();
@@ -105,7 +109,7 @@ function handleSignedOut() {
   document.getElementById('emulator-screen').style.display = 'none';
 }
 
-// ── Google sign-in — requests Drive scopes ───────────────────────────────────
+// ── Google sign-in — requests Drive scopes ────────────────────────────────────
 async function signInWithGoogle() {
   if (!_supabase) { setAuthStatus('Auth not ready', 'err'); return; }
   setAuthStatus('Opening Google sign-in...', '');
@@ -113,12 +117,11 @@ async function signInWithGoogle() {
     const { error } = await _supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // drive.readonly  = browse & download ROMs from user's Drive folders
-        // drive.appdata   = read/write save states in hidden app folder
         scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.appdata',
         redirectTo: window.location.href.split('#')[0].split('?')[0],
         queryParams: {
-          access_type: 'offline', // get a refresh_token so Drive access survives past 1hr
+          access_type: 'offline',   // get a refresh_token so Drive access survives past 1hr
+          prompt: 'consent',        // force consent screen so Google always gives refresh_token
         },
       }
     });
@@ -135,32 +138,77 @@ async function signOut() {
   await _supabase.auth.signOut();
 }
 
-// ── Get a valid Drive token, refreshing if needed ────────────────────────────
-// Call this before every Drive API request instead of reading window._providerToken directly
+// ── Silent token refresh via Cloudflare Worker ────────────────────────────────
+// Posts the refresh_token to our Worker which holds GOOGLE_CLIENT_SECRET.
+// Returns the new access_token string, or null on failure.
+async function _workerRefresh() {
+  const rt = window._providerRefreshToken;
+  if (!rt) {
+    dbgAuth('Worker refresh skipped — no refresh_token stored');
+    return null;
+  }
+  dbgAuth('Attempting worker token refresh...');
+  try {
+    const res  = await fetch(WORKER_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ refresh_token: rt }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.access_token) {
+      dbgAuth('Worker refresh failed: ' + (data.error || res.status));
+      return null;
+    }
+    dbgAuth('Worker refresh OK — new token received');
+    return data.access_token;
+  } catch (err) {
+    dbgAuth('Worker refresh ERR: ' + err.message);
+    return null;
+  }
+}
+
+// ── Get a valid Drive token ───────────────────────────────────────────────────
+// Call this before every Drive API request.
+// Priority: cached token → Supabase session refresh → Cloudflare Worker refresh
 async function getDriveToken() {
   if (!_supabase) return null;
 
-  // Try current token first (fast path)
+  // 1. Fast path — use whatever we already have
   if (window._providerToken) return window._providerToken;
 
-  // No token — try session refresh
-  dbgAuth('No provider_token, attempting session refresh');
+  // 2. Try Supabase session refresh (free, hits Supabase)
+  dbgAuth('No provider_token — trying Supabase session refresh');
   try {
     const { data, error } = await _supabase.auth.refreshSession();
-    if (error) throw error;
-    if (data?.session?.provider_token) {
+    if (!error && data?.session?.provider_token) {
       window._providerToken = data.session.provider_token;
-      dbgAuth('Token refreshed OK');
+      if (data.session.provider_refresh_token) {
+        window._providerRefreshToken = data.session.provider_refresh_token;
+      }
+      dbgAuth('Supabase session refresh OK');
       return window._providerToken;
     }
   } catch (err) {
-    dbgAuth('Token refresh ERR: ' + err.message);
+    dbgAuth('Supabase refresh ERR: ' + err.message);
   }
+
+  // 3. Fall back to Cloudflare Worker (uses GOOGLE_CLIENT_SECRET server-side)
+  const freshToken = await _workerRefresh();
+  if (freshToken) {
+    window._providerToken = freshToken;
+    return freshToken;
+  }
+
+  // 4. Completely out of options — caller must handle null
+  dbgAuth('All token refresh strategies exhausted');
   return null;
 }
 window.getDriveToken = getDriveToken;
 
-// Helper: makes a Drive API fetch, retries once after token refresh on 401
+// ── Drive API fetch with automatic silent retry on 401 ───────────────────────
+// Makes a Drive API fetch. On 401 it clears the cached token and retries once
+// using getDriveToken() — which will call the Worker if Supabase can't help.
+// The user never sees an interruption.
 async function driveApiFetch(url, options = {}) {
   let token = await getDriveToken();
   if (!token) throw new Error('No Drive token available — please sign out and sign in again');
@@ -173,15 +221,15 @@ async function driveApiFetch(url, options = {}) {
   let res = await doFetch(token);
 
   if (res.status === 401) {
-    dbgAuth('Drive 401 — refreshing token and retrying');
-    window._providerToken = null; // force refresh
+    dbgAuth('Drive 401 — clearing cached token and retrying via refresh chain');
+    window._providerToken = null;   // force full refresh on next call
     token = await getDriveToken();
     if (!token) throw new Error('Drive re-auth failed — please sign out and sign in again');
     res = await doFetch(token);
   }
 
   if (res.status === 403) {
-    const body = await res.clone().json().catch(() => ({}));
+    const body   = await res.clone().json().catch(() => ({}));
     const reason = body?.error?.errors?.[0]?.reason || '';
     if (reason === 'insufficientPermissions') {
       throw new Error('INSUFFICIENT_PERMISSIONS');
@@ -192,7 +240,7 @@ async function driveApiFetch(url, options = {}) {
 }
 window.driveApiFetch = driveApiFetch;
 
-// Legacy Supabase token getter (still used by old save helpers during transition)
+// ── Legacy Supabase token getter ──────────────────────────────────────────────
 async function getAuthToken() {
   if (!_supabase) return SUPABASE_ANON_KEY;
   const { data } = await _supabase.auth.getSession();
@@ -221,7 +269,7 @@ function setAuthStatus(msg, cls) {
   const el = document.getElementById('auth-status');
   if (!el) return;
   el.textContent = msg;
-  el.className = 'auth-status' + (cls ? ' ' + cls : '');
+  el.className   = 'auth-status' + (cls ? ' ' + cls : '');
 }
 
 function dbgAuth(msg) {
