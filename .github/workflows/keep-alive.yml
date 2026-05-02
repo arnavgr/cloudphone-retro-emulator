@@ -1,0 +1,15 @@
+name: Supabase Keep Alive
+on:
+  schedule:
+    - cron: '0 0 */3 * *' 
+  workflow_dispatch:      
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase API
+        run: |
+          curl -I -X GET "https://dvaqqcqvgletpuqmfsxz.supabase.co/auth/v1/health" \
+          -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2YXFxY3F2Z2xldHB1cW1mc3h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTE4NzAsImV4cCI6MjA5MTI4Nzg3MH0.gLNT7QEVD7UJB7RT0hgpNCXIHYQXoNhW0_7kbYmDu4Q" \
+          -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2YXFxY3F2Z2xldHB1cW1mc3h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTE4NzAsImV4cCI6MjA5MTI4Nzg3MH0.gLNT7QEVD7UJB7RT0hgpNCXIHYQXoNhW0_7kbYmDu4Q"
