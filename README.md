@@ -10,7 +10,7 @@ This project runs entirely in the browser, leveraging **EmulatorJS** for hardwar
 *   **Keypad Optimized UI:** Custom control mappings designed for physical T9/feature-phone keypads, bypassing the need for touch screens or external gamepads.
 *   **Dynamic Screen Support:** Auto-detects screen resolution to handle both standard (240x320) and small (128x160) displays, dynamically switching rendering orientations.
 *   **Cloud Save States:** Game states are synced automatically to a hidden `appDataFolder` in Google Drive, allowing users to pick up exactly where they left off.
-*   **Auto-Save Protection:** Built-in token monitoring automatically forces a cloud save before the 1-hour Google OAuth token expires to prevent data loss.
+*   **Persistent Drive Access:** Google OAuth tokens are silently refreshed in the background via a serverless function, so Drive access never expires mid-session.
 
 ## 🎮 Supported Systems
 
