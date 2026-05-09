@@ -8,7 +8,7 @@
 // not CSS pixels, so it's unaffected by browser zoom or scaling.
 //
 // Classes:
-//   standard  — 240×320 and above  (CloudPhone HMD 101/105 4G, etc.)
+//   standard  — 240×320 and above
 //   small     — anything ≤ 160px on either axis (128×160, 120×160, etc.)
 // ══════════════════════════════════════════════════════════════
 const _SW = window.screen.width;
@@ -17,34 +17,33 @@ const SCREEN = {
   w:        _SW,
   h:        _SH,
   isSmall:  Math.min(_SW, _SH) <= 160,   // true for 128×160 / 120×160
-  // Expose for debug
   toString() { return `${_SW}×${_SH} (${this.isSmall ? 'small' : 'standard'})`; },
 };
 
 // ══════════════════════════════════════════════════════════════
 // SYSTEM REGISTRY
 // ══════════════════════════════════════════════════════════════
-// landscape     — default orientation for standard screens
-// smallLandscape— override for small screens (omit = same as landscape)
-// ejsSystem     — passed as EJS_system for multi-system cores
+// landscape      — orientation for standard (240×320) screens
+// smallLandscape — orientation override for small (≤160px) screens
 //
-// Orientation rules:
-//   GBA          → landscape on ALL screens (native 240×160 = wide)
-//   GB/GBC/GG/SMS→ portrait on standard, landscape on small
-//                  (native 160×144 fits perfectly in small landscape)
-//   Everything else already landscape → no change needed
+// 240×320 orientation rules:
+//   PSX, Genesis, SNES, NES, SMS → Landscape
+//   GBA, GB, GBC, GG             → Portrait
+//
+// 120×160 / small screens:
+//   ALL systems → Portrait (smallLandscape: false)
+//   (future consoles that need landscape on small can opt-in)
 // ══════════════════════════════════════════════════════════════
 const SYSTEMS = {
-  gb:      { core: 'gambatte',         exts: ['.gb'],                  label: 'GB',  cls: 'gb',  landscape: false, smallLandscape: true },
-  gbc:     { core: 'gambatte',         exts: ['.gbc'],                 label: 'GBC', cls: 'gbc', landscape: false, smallLandscape: true },
-  gba:     { core: 'mgba',             exts: ['.gba'],                 label: 'GBA', cls: 'gba', landscape: true,  smallLandscape: true },
-  nes:     { core: 'nestopia',         exts: ['.nes'],                 label: 'NES', cls: 'nes', landscape: true,  smallLandscape: true },
-  snes:    { core: 'snes9x',           exts: ['.sfc', '.smc'],         label: 'SNES',cls: 'snes',landscape: true,  smallLandscape: true },
-  psx:     { core: 'pcsx_rearmed',     exts: ['.chd'],                 label: 'PS1', cls: 'ps1', landscape: true,  smallLandscape: true },
-  gg:      { core: 'segaGG',           exts: ['.gg'],                  label: 'GG',  cls: 'gg',  landscape: false, smallLandscape: true },
-  sms:     { core: 'segaMS',           exts: ['.sms'],                 label: 'SMS', cls: 'sms', landscape: false, smallLandscape: true },
-  genesis: { core: 'segaMD',           exts: ['.md', '.bin', '.gen'],  label: 'GEN', cls: 'gen', landscape: true,  smallLandscape: true },
-  n64:     { core: 'mupen64plus_next', exts: ['.z64', '.n64', '.v64'], label: 'N64', cls: 'n64', landscape: true,  smallLandscape: true },
+  gb:      { core: 'gambatte',     exts: ['.gb'],          label: 'GB',   cls: 'gb',   landscape: false, smallLandscape: true },
+  gbc:     { core: 'gambatte',     exts: ['.gbc'],         label: 'GBC',  cls: 'gbc',  landscape: false, smallLandscape: true },
+  gba:     { core: 'mgba',         exts: ['.gba'],         label: 'GBA',  cls: 'gba',  landscape: false, smallLandscape: true },
+  nes:     { core: 'nestopia',     exts: ['.nes'],         label: 'NES',  cls: 'nes',  landscape: true,  smallLandscape: true },
+  snes:    { core: 'snes9x',       exts: ['.sfc', '.smc'], label: 'SNES', cls: 'snes', landscape: true,  smallLandscape: true },
+  psx:     { core: 'pcsx_rearmed', exts: ['.chd'],         label: 'PS1',  cls: 'ps1',  landscape: true,  smallLandscape: true },
+  gg:      { core: 'segaGG',       exts: ['.gg'],          label: 'GG',   cls: 'gg',   landscape: false, smallLandscape: true },
+  sms:     { core: 'segaMS',       exts: ['.sms'],         label: 'SMS',  cls: 'sms',  landscape: true,  smallLandscape: true },
+  genesis: { core: 'segaMD',       exts: ['.md', '.bin', '.gen'], label: 'GEN', cls: 'gen', landscape: true, smallLandscape: true },
 };
 
 // Resolve the actual landscape value for the current screen
@@ -60,19 +59,13 @@ function _resolveLandscape(sys) {
 // ══════════════════════════════════════════════════════════════
 const BIOS_REGISTRY = {
   pcsx_rearmed: [
-    { file: 'scph1001.bin',    ejsVar: 'EJS_biosUrl',  required: true  },
+    { file: 'scph1001.bin', ejsVar: 'EJS_biosUrl', required: true },
   ],
-  // genesis_plus_gx (GG/SMS/Genesis), mgba, nestopia,
-  // snes9x, mupen64plus_next — no BIOS needed
 };
 
 // ══════════════════════════════════════════════════════════════
 // CONTROLS
 // ══════════════════════════════════════════════════════════════
-// EJS defaultControls button index (RetroArch pad layout):
-//   0=B  1=Y  2=Select  3=Start  4=Up  5=Down  6=Left  7=Right
-//   8=A  9=X  10=L  11=R  12=L2  13=R2
-
 function _pad(dpad, { a, b, x = '', y = '', start, select, l = '', r = '', l2 = '', r2 = '' }) {
   return {
     0:  { value: b },       1:  { value: y },       2:  { value: select }, 3: { value: start },
@@ -93,10 +86,7 @@ const _L = ['right arrow', 'left arrow', 'up arrow', 'down arrow'];
 
 const _BTNS     = { a: 'enter', b: '1', start: 'escape', select: '3' };
 const _BTNS_EXT = { ..._BTNS, x: '4', y: '2', l: '5', r: '6' };
-const _BTNS_N64 = { ..._BTNS_EXT, l2: '7', r2: '9' };
 
-// genesis_plus_gx has a non-standard button index layout:
-//   0=B  1=C  2=Mode  3=(unused)  8=A  9=Start (NOT index 3)
 function _genesisControls(dpad) {
   return {
     0:  { value: '1'      }, // B
@@ -106,7 +96,7 @@ function _genesisControls(dpad) {
     4:  { value: dpad[0] }, 5: { value: dpad[1] },
     6:  { value: dpad[2] }, 7: { value: dpad[3] },
     8:  { value: 'enter'  }, // A
-    9:  { value: 'escape' }, // Start ← index 9
+    9:  { value: 'escape' }, // Start
     10: { value: '5' },      // X
     11: { value: '6' },      // Y/Z
     12: { value: '' }, 13: { value: '' }, 14: { value: '' }, 15: { value: '' },
@@ -116,15 +106,14 @@ function _genesisControls(dpad) {
 }
 
 const CONTROLS = {
-  gambatte:         { portrait: _pad(_P, _BTNS),      landscape: _pad(_L, _BTNS)      },
-  mgba:             { portrait: _pad(_P, _BTNS_EXT),  landscape: _pad(_L, _BTNS_EXT)  },
-  nestopia:         { portrait: _pad(_P, _BTNS),      landscape: _pad(_L, _BTNS)      },
-  snes9x:           { portrait: _pad(_P, _BTNS_EXT),  landscape: _pad(_L, _BTNS_EXT)  },
-  pcsx_rearmed:     { portrait: _pad(_P, _BTNS_EXT),  landscape: _pad(_L, _BTNS_EXT)  },
-  gearsystem:       { portrait: _pad(_P, _BTNS),      landscape: _pad(_L, _BTNS)      },
-  segaMS:           { portrait: _pad(_P, _BTNS),      landscape: _pad(_L, _BTNS)      },
-  segaMD:           { portrait: _pad(_P, _BTNS_EXT),  landscape: _pad(_L, _BTNS_EXT)  },
-  mupen64plus_next: { portrait: _pad(_P, _BTNS_N64),  landscape: _pad(_L, _BTNS_N64)  },
+  gambatte:     { portrait: _pad(_P, _BTNS),     landscape: _pad(_L, _BTNS)     },
+  mgba:         { portrait: _pad(_P, _BTNS_EXT), landscape: _pad(_L, _BTNS_EXT) },
+  nestopia:     { portrait: _pad(_P, _BTNS),     landscape: _pad(_L, _BTNS)     },
+  snes9x:       { portrait: _pad(_P, _BTNS_EXT), landscape: _pad(_L, _BTNS_EXT) },
+  pcsx_rearmed: { portrait: _pad(_P, _BTNS_EXT), landscape: _pad(_L, _BTNS_EXT) },
+  gearsystem:   { portrait: _pad(_P, _BTNS),     landscape: _pad(_L, _BTNS)     },
+  segaMS:       { portrait: _pad(_P, _BTNS),     landscape: _pad(_L, _BTNS)     },
+  segaMD:       { portrait: _pad(_P, _BTNS_EXT), landscape: _pad(_L, _BTNS_EXT) },
 };
 
 function getControls(core, landscape) {
@@ -154,10 +143,6 @@ const _KL = [
   { key: '2', action: 'Y' }, { key: '4', action: 'X' },
   { key: '5', action: 'L' }, { key: '6', action: 'R' },
 ];
-const _KL_N64 = [..._KL,
-  { key: '7', action: 'Z (L2)'   },
-  { key: '9', action: 'C↓ (R2)'  },
-];
 const _KL_GEN = [
   { key: '↑', action: '→ RIGHT' }, { key: '↓', action: '→ LEFT'  },
   { key: '←', action: '→ UP'    }, { key: '→', action: '→ DOWN'  },
@@ -181,21 +166,18 @@ const _KMETA = [
   { key: 'RSK', action: 'EXIT'       },
 ];
 
-// Keybind lookup: folder name → binds array (resolved at popup time using rom.landscape)
-// We can't precompute because landscape depends on screen size detected at runtime.
 function getKeybinds(rom) {
-  const ls = rom.landscape; // already resolved for this device
+  const ls = rom.landscape;
   switch (rom.folder) {
     case 'gb':
     case 'gbc':     return [...(ls ? _KL     : _KP),     ..._KMETA];
-    case 'gba':     return [..._KL,                       ..._KMETA]; // always landscape
-    case 'gg':
-    case 'sms':     return [...(ls ? _KL_GEN : _KP_GEN), ..._KMETA];
-    case 'genesis': return [..._KL_GEN,                   ..._KMETA]; // always landscape
-    case 'n64':     return [..._KL_N64,                   ..._KMETA]; // always landscape
-    case 'nes':
-    case 'snes':
-    case 'psx':
+    case 'gba':     return [..._KP,                       ..._KMETA]; // portrait on all screens
+    case 'gg':      return [...(ls ? _KL_GEN : _KP_GEN), ..._KMETA];
+    case 'sms':     return [...(ls ? _KL     : _KP),     ..._KMETA];
+    case 'genesis': return [..._KL_GEN,                   ..._KMETA]; // always landscape on standard
+    case 'nes':     return [..._KL,                       ..._KMETA]; // landscape on standard
+    case 'snes':    return [..._KL,                       ..._KMETA]; // landscape on standard
+    case 'psx':     return [..._KL,                       ..._KMETA]; // landscape on standard
     default:        return [..._KP,                       ..._KMETA];
   }
 }
@@ -225,10 +207,10 @@ const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 
 const _cache = {
   rootId:    null,
-  biosId:    null,   // null=unchecked  ''=not found  string=found
-  biosFiles: {},     // filename → fileId
-  romBlobs:  {},     // fileId   → blobUrl (cleared on ROM exit)
-  biosBlobs: {},     // fileId   → blobUrl (kept across launches)
+  biosId:    null,
+  biosFiles: {},
+  romBlobs:  {},
+  biosBlobs: {},
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -247,31 +229,53 @@ const _log              = [];
 function dbg(msg) {
   const ts = new Date().toTimeString().slice(0, 8);
   _log.push('[' + ts + '] ' + msg);
-  if (_log.length > 100) _log.shift();
+  if (_log.length > 200) _log.shift();
   const el = document.getElementById('debug-log');
-  if (el) el.textContent = _log.slice(-60).join('\n');
+  if (el) {
+    el.textContent = _log.join('\n');
+    // Auto-scroll to bottom so latest message is always visible
+    el.scrollTop = el.scrollHeight;
+  }
 }
 
+// ── Debug overlay — scrollable, stays open until 8 is pressed ─────────────────
 function toggleDebug() {
   let el = document.getElementById('debug-overlay');
   if (!el) {
     el = document.createElement('div');
     el.id = 'debug-overlay';
     el.style.cssText = [
-      'position:fixed;top:0;left:0;z-index:999999;overflow-y:auto;',
-      'background:rgba(0,0,0,0.94);border:1px solid #00ff41;',
-      'padding:6px;font-family:monospace;color:#00ff41;',
+      'position:fixed;top:0;left:0;z-index:999999;',
+      'display:flex;flex-direction:column;',
+      'background:rgba(0,0,0,0.96);border:1px solid #00ff41;',
+      'padding:0;font-family:monospace;color:#00ff41;',
       _isLandscape
-        ? 'font-size:8px;width:100vh;height:100vw;transform:rotate(90deg);transform-origin:top left;margin-left:100vw;'
-        : 'font-size:9px;width:100vw;max-height:100vh;',
+        ? 'width:100vh;height:100vw;transform:rotate(90deg);transform-origin:top left;margin-left:100vw;'
+        : 'width:100vw;height:100vh;',
     ].join('');
-    el.innerHTML = '<div style="color:#ffd700;margin-bottom:4px;letter-spacing:2px;">DEBUG — press 8 to close</div>'
-                 + '<pre id="debug-log" style="white-space:pre-wrap;word-break:break-all;"></pre>';
+    el.innerHTML =
+      '<div style="color:#ffd700;letter-spacing:2px;padding:6px 8px;border-bottom:1px solid #333;flex-shrink:0;font-size:9px;">'
+      + 'DEBUG — press 8 to close</div>'
+      + '<pre id="debug-log" style="'
+      + 'flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;'
+      + 'white-space:pre-wrap;word-break:break-all;margin:0;'
+      + (_isLandscape ? 'font-size:7px;' : 'font-size:9px;')
+      + 'padding:6px 8px;"></pre>';
     document.body.appendChild(el);
   }
-  const visible = el.style.display !== 'none';
-  el.style.display = visible ? 'none' : 'block';
-  if (!visible) document.getElementById('debug-log').textContent = _log.slice(-60).join('\n') || 'No logs yet.';
+
+  const isVisible = el.style.display !== 'none';
+  if (isVisible) {
+    el.style.display = 'none';
+  } else {
+    el.style.display = 'flex';
+    const logEl = document.getElementById('debug-log');
+    if (logEl) {
+      logEl.textContent = _log.join('\n') || 'No logs yet.';
+      // Scroll to bottom so the latest entry is visible on open
+      setTimeout(() => { logEl.scrollTop = logEl.scrollHeight; }, 0);
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -387,8 +391,6 @@ async function discoverRoms() {
       const sys = SYSTEMS[key];
       if (!sys) { dbg('Unknown folder, skipping: ' + folder.name); continue; }
 
-      // Resolve landscape for this device at discovery time —
-      // stored on each ROM object so the rest of the code is unaware of screen size
       const landscape = _resolveLandscape(sys);
 
       const files = await driveListChildren(folder.id, false);
@@ -402,7 +404,7 @@ async function discoverRoms() {
           core:      sys.core,
           label:     sys.label,
           cls:       sys.cls,
-          landscape,               // resolved for this device
+          landscape,
           ejsSystem: sys.ejsSystem || null,
           folder:    key,
         });
@@ -417,7 +419,7 @@ async function discoverRoms() {
       return;
     }
 
-    _prefetchBios(); // non-blocking background index
+    _prefetchBios();
     _buildRomList();
 
   } catch (err) {
@@ -474,11 +476,64 @@ async function _loadBios(core) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// PROACTIVE TOKEN REFRESH
+// ══════════════════════════════════════════════════════════════
+// Called before any Drive upload to ensure the token is fresh.
+// This is the key fix for the 1hr save failure: instead of waiting
+// for a 401 mid-upload (which the PATCH endpoint won't retry cleanly),
+// we proactively force a refresh if the token is likely to be stale.
+//
+// Strategy:
+//   - Track when the provider_token was last confirmed fresh.
+//   - If it's been more than 50 minutes, force a full refresh cycle
+//     (Supabase session refresh → Cloudflare Worker) BEFORE the upload.
+//   - This ensures the upload uses a token with at least ~10 min of life.
+// ══════════════════════════════════════════════════════════════
+let _tokenLastRefreshed = Date.now(); // assume fresh on page load / sign-in
+
+// Call this before any Drive write operation.
+async function _ensureFreshToken() {
+  const AGE_MS = Date.now() - _tokenLastRefreshed;
+  const REFRESH_THRESHOLD_MS = 50 * 60 * 1000; // 50 minutes
+
+  if (AGE_MS < REFRESH_THRESHOLD_MS) {
+    dbg('Token age: ' + Math.round(AGE_MS / 60000) + 'min — skipping proactive refresh');
+    return;
+  }
+
+  dbg('Token age: ' + Math.round(AGE_MS / 60000) + 'min — proactive refresh before upload');
+
+  // Clear the cached provider token to force getDriveToken() to fully refresh
+  window._providerToken = null;
+
+  const token = await window.getDriveToken();
+  if (token) {
+    _tokenLastRefreshed = Date.now();
+    dbg('Proactive token refresh OK');
+  } else {
+    dbg('Proactive token refresh FAILED — upload may fail');
+  }
+}
+
+// Reset the refresh timer whenever auth succeeds (sign-in or token_refreshed event)
+function _markTokenFresh() {
+  _tokenLastRefreshed = Date.now();
+  dbg('Token marked fresh at ' + new Date().toTimeString().slice(0, 8));
+}
+
+// Hook into auth events so the timer resets properly
+const _origOnAuthSuccess = window.onAuthSuccess;
+window.onAuthSuccess = function(user) {
+  _markTokenFresh();
+  if (typeof _origOnAuthSuccess === 'function') _origOnAuthSuccess(user);
+};
+
+// ══════════════════════════════════════════════════════════════
 // SAVE STATE — CLOUD (Drive appDataFolder)
 // ══════════════════════════════════════════════════════════════
 function _saveKey(gameName) {
   const uid  = window.currentUser?.id || 'anon';
-  const base = gameName.replace(/\.[^.]+$/, ''); // Strip the extension for the save file
+  const base = gameName.replace(/\.[^.]+$/, '');
   const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_');
   return uid + '_' + safe + '.state';
 }
@@ -508,10 +563,19 @@ async function _cloudDownload(gameName) {
 async function _cloudUpload(gameName, bytes) {
   const filename = _saveKey(gameName);
   dbg('UL save: ' + filename + ' (' + bytes.byteLength + 'B)');
+
+  // Proactively refresh the token before uploading — fixes 1hr expiry UL errors
+  await _ensureFreshToken();
+
   try {
     const existingId = await driveFindAppFile(filename);
     const ok = await driveWriteAppFile(filename, bytes, existingId);
-    dbg('UL save: ' + (ok ? 'OK' : 'FAILED'));
+    if (ok) {
+      _tokenLastRefreshed = Date.now(); // successful upload confirms token works; reset timer
+      dbg('UL save: OK');
+    } else {
+      dbg('UL save: FAILED (driveWriteAppFile returned false)');
+    }
     return ok;
   } catch (err) {
     dbg('UL save ERR: ' + err.message);
@@ -697,7 +761,7 @@ async function launchRom(index) {
   const rom = ROMS[index];
   if (!rom || !window.currentUser) return;
 
-  _currentRom        = rom;
+  _currentRom         = rom;
   _saveConfirmPending = false;
 
   setLandscape(rom.landscape);
@@ -801,10 +865,9 @@ window.addEventListener('back', (e) => {
     e.preventDefault();
     if (document.getElementById('keybinds-overlay')?.classList.contains('visible')) { toggleKeybinds(); return; }
     if (_saveConfirmPending) { _dismissSaveConfirm(); return; }
-    if (document.getElementById('debug-overlay')?.style.display === 'block') { toggleDebug(); return; }
+    if (document.getElementById('debug-overlay')?.style.display === 'flex') { toggleDebug(); return; }
     exitRom();
   }
-  // Selector / auth: let RSK close the widget naturally
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -815,21 +878,19 @@ document.addEventListener('keydown', (e) => {
   const inEmu = document.getElementById('emulator-screen').style.display !== 'none';
 
   if (inSel) {
-    if (e.key === 'ArrowDown') { 
-      e.preventDefault(); 
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
       if (_romIndex < ROMS.length - 1) {
         _updateSelection(_romIndex + 1);
       } else {
-        // At the bottom of the ROM list: manually push the scrollbar down
         document.getElementById('selector').scrollTop += 60;
       }
     }
-    if (e.key === 'ArrowUp') { 
-      e.preventDefault(); 
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
       if (_romIndex > 0) {
         _updateSelection(_romIndex - 1);
       } else {
-        // At the top of the ROM list: manually push the scrollbar up
         document.getElementById('selector').scrollTop -= 60;
       }
     }
@@ -849,11 +910,8 @@ document.addEventListener('keydown', (e) => {
 // ══════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════
-// No auth timer needed — driveApiFetch() in auth.js now silently
-// refreshes the Google Drive access token on every 401, using the
-// Cloudflare Worker as a fallback. The user never notices a token expiry.
-
 window.onAuthSuccess = function(user) {
+  _markTokenFresh();
   dbg('Auth success: ' + user.name + ' | screen: ' + SCREEN.toString());
   document.getElementById('selector').style.display = 'flex';
   discoverRoms();

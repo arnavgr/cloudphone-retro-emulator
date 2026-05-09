@@ -86,8 +86,6 @@ button:focus, .rom-item:focus, .auth-google-btn:focus {
 .rom-badge.gg   { border-color: #3a1a00; color: #ff9030; }
 .rom-badge.sms  { border-color: #2a0a00; color: #ff7060; }
 .rom-badge.gen  { border-color: #3a0030; color: #ff60cc; }
-.rom-badge.sat  { border-color: #2a1a00; color: #ffb040; }
-.rom-badge.n64  { border-color: #001a00; color: #40dd40; }
 
 .selector-help-hint { font-size: 8px; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 10px; align-self: flex-start; margin-left: 4px; }
 .selector-help-hint span { color: var(--gold); }
