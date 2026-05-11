@@ -121,7 +121,6 @@ async function signInWithGoogle() {
         redirectTo: window.location.href.split('#')[0].split('?')[0],
         queryParams: {
           access_type: 'offline',   // get a refresh_token so Drive access survives past 1hr
-          prompt: 'consent',        // force consent screen so Google always gives refresh_token
         },
       }
     });
