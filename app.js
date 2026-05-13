@@ -804,27 +804,27 @@ async function _bootEJS(rom, romUrl) {
     window._lastStateBlobUrl = null;
   }
 
-  // ── HACK 1: The AudioContext Lobotomy (Updated) ────────────────────────────
-  // Replaces the browser's native audio engine with a dummy object.
-  // This tricks EJS into running without crashing, while preventing CloudMosa
+  // ── HACK 1: The AudioContext Lobotomy (V3) ───────────────────────────────
+  // Tricks EJS into running without crashing, preventing CloudMosa
   // from spinning up heavy audio-processing threads for the video stream.
   window.AudioContext = window.webkitAudioContext = function() {
     return {
-      createGain: () => ({ connect: () => {}, gain: { value: 0 } }),
-      createBufferSource: () => ({ connect: () => {}, start: () => {}, stop: () => {} }),
-      createScriptProcessor: () => ({ connect: () => {}, disconnect: () => {} }),
-      createPanner: () => ({ connect: () => {}, setPosition: () => {}, setOrientation: () => {}, setVelocity: () => {} }),
-      createDynamicsCompressor: () => ({ connect: () => {}, threshold: {}, knee: {}, ratio: {}, reduction: {}, attack: {}, release: {} }),
+      createGain: () => ({ connect: ()=>{}, disconnect: ()=>{}, gain: { value: 0 } }),
+      createBufferSource: () => ({ connect: ()=>{}, disconnect: ()=>{}, start: ()=>{}, stop: ()=>{}, playbackRate: { value: 1 } }),
+      createScriptProcessor: () => ({ connect: ()=>{}, disconnect: ()=>{} }),
+      createPanner: () => ({ connect: ()=>{}, disconnect: ()=>{}, setPosition: ()=>{}, setOrientation: ()=>{}, setVelocity: ()=>{} }),
+      createDynamicsCompressor: () => ({ connect: ()=>{}, disconnect: ()=>{}, threshold: {}, knee: {}, ratio: {}, reduction: {}, attack: {}, release: {} }),
       resume: () => Promise.resolve(),
       suspend: () => Promise.resolve(),
       close: () => Promise.resolve(),
-      destination: {},
+      destination: { connect: ()=>{}, disconnect: ()=>{} },
       state: 'running',
       sampleRate: 44100,
-      currentTime: 0
+      currentTime: 0,
+      listener: { setPosition: ()=>{}, setOrientation: ()=>{}, setVelocity: ()=>{} }
     };
   };
-
+	
   window.EJS_player          = '#emulator-wrapper';
   window.EJS_gameName        = rom.file;
   window.EJS_gameUrl         = romUrl;
@@ -879,6 +879,25 @@ async function _bootEJS(rom, romUrl) {
     _setSaveStatus(window.EJS_loadStateURL ? 'LOADED!' : 'NEW GAME', 'active');
     _clearSaveStatus();
     dbg('EJS_onGameStart fired');
+
+    // ── HACK 4: Polling Canvas Isolator (Updated) ────────────────────────────
+    // Emscripten can take an unpredictable amount of time to inject the canvas.
+    // Instead of a blind timeout, we poll every 100ms until we find it.
+    let attempts = 0;
+    const findCanvas = setInterval(() => {
+      const canvas = document.querySelector('canvas'); 
+      if (canvas) {
+          canvas.style.imageRendering = 'pixelated';
+          canvas.style.transform = 'translateZ(0)'; 
+          dbg('Hack 4: Canvas isolated');
+          clearInterval(findCanvas); // Stop checking once we find it
+      } else if (attempts++ > 50) { 
+          // Give up after 5 seconds to prevent infinite loops
+          dbg('Hack 4 ERR: Canvas not found');
+          clearInterval(findCanvas);
+      }
+    }, 100);
+  };
 
     // ── HACK 4: Aggressive DOM Pruning & Canvas Isolation (Updated) ──────────
     // Give EJS 500ms to actually put the canvas in the DOM before we style it
