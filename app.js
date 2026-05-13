@@ -804,7 +804,7 @@ async function _bootEJS(rom, romUrl) {
     window._lastStateBlobUrl = null;
   }
 
-  // ── HACK 1: The AudioContext Lobotomy ──────────────────────────────────────
+  // ── HACK 1: The AudioContext Lobotomy (Updated) ────────────────────────────
   // Replaces the browser's native audio engine with a dummy object.
   // This tricks EJS into running without crashing, while preventing CloudMosa
   // from spinning up heavy audio-processing threads for the video stream.
@@ -813,6 +813,8 @@ async function _bootEJS(rom, romUrl) {
       createGain: () => ({ connect: () => {}, gain: { value: 0 } }),
       createBufferSource: () => ({ connect: () => {}, start: () => {}, stop: () => {} }),
       createScriptProcessor: () => ({ connect: () => {}, disconnect: () => {} }),
+      createPanner: () => ({ connect: () => {}, setPosition: () => {}, setOrientation: () => {}, setVelocity: () => {} }),
+      createDynamicsCompressor: () => ({ connect: () => {}, threshold: {}, knee: {}, ratio: {}, reduction: {}, attack: {}, release: {} }),
       resume: () => Promise.resolve(),
       suspend: () => Promise.resolve(),
       close: () => Promise.resolve(),
@@ -878,13 +880,18 @@ async function _bootEJS(rom, romUrl) {
     _clearSaveStatus();
     dbg('EJS_onGameStart fired');
 
-    // ── HACK 4: Aggressive DOM Pruning & Canvas Isolation ────────────────────
-    // Force EJS canvas to strictly obey nearest-neighbor and prevent layout shifts
-    const canvas = document.querySelector('#emulator-wrapper canvas, #emulator-wrapper #canvas');
-    if (canvas) {
-        canvas.style.imageRendering = 'pixelated';
-        canvas.style.transform = 'translateZ(0)'; // Forces hardware acceleration layer
-    }
+    // ── HACK 4: Aggressive DOM Pruning & Canvas Isolation (Updated) ──────────
+    // Give EJS 500ms to actually put the canvas in the DOM before we style it
+    setTimeout(() => {
+      const canvas = document.querySelector('canvas'); 
+      if (canvas) {
+          canvas.style.imageRendering = 'pixelated';
+          canvas.style.transform = 'translateZ(0)'; 
+          dbg('Hack 4: Canvas isolated');
+      } else {
+          dbg('Hack 4 ERR: Canvas not found');
+      }
+    }, 500);
   };
 
   const script     = document.createElement('script');
