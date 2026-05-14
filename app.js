@@ -899,20 +899,6 @@ async function _bootEJS(rom, romUrl) {
     }, 100);
   };
 
-    // ── HACK 4: Aggressive DOM Pruning & Canvas Isolation (Updated) ──────────
-    // Give EJS 500ms to actually put the canvas in the DOM before we style it
-    setTimeout(() => {
-      const canvas = document.querySelector('canvas'); 
-      if (canvas) {
-          canvas.style.imageRendering = 'pixelated';
-          canvas.style.transform = 'translateZ(0)'; 
-          dbg('Hack 4: Canvas isolated');
-      } else {
-          dbg('Hack 4 ERR: Canvas not found');
-      }
-    }, 500);
-  };
-
   const script     = document.createElement('script');
   script.src       = 'https://cdn.emulatorjs.org/stable/data/loader.js';
   script.className = 'ejs-script';
