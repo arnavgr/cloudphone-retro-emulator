@@ -833,26 +833,12 @@ async function _bootEJS(rom, romUrl) {
 
   await _loadBios(rom.core);
 
-  _setSaveStatus('CLOUD CHECK...', 'saving');
-  let stateBytes = null;
-  try { stateBytes = await _cloudDownload(window.EJS_gameName); }
-  catch (err) { dbg('Cloud check ERR: ' + err.message); }
-
-  if (stateBytes?.byteLength) {
-    const blob = new Blob([stateBytes], { type: 'application/octet-stream' });
-    window._lastStateBlobUrl = URL.createObjectURL(blob);
-    window.EJS_loadStateURL  = window._lastStateBlobUrl;
-    dbg('State ready: ' + stateBytes.byteLength + 'B');
-  } else {
-    dbg('No cloud save — fresh boot');
-  }
-
   window.EJS_onGameStart = () => {
     // FIXED: Use optional chaining (?) so it doesn't crash if EJS already deleted the loader
     const loadingMsg = document.getElementById('loading-msg');
     if (loadingMsg) loadingMsg.style.display = 'none';
 
-    _setSaveStatus(window.EJS_loadStateURL ? 'LOADED!' : 'NEW GAME', 'active');
+    _setSaveStatus('NEW GAME', 'active');
     _clearSaveStatus();
     dbg('EJS_onGameStart fired');
 
