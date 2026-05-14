@@ -804,9 +804,7 @@ async function _bootEJS(rom, romUrl) {
     window._lastStateBlobUrl = null;
   }
 
-  // ── HACK 1: The AudioContext Lobotomy (V3) ───────────────────────────────
-  // Tricks EJS into running without crashing, preventing CloudMosa
-  // from spinning up heavy audio-processing threads for the video stream.
+  // ── HACK 1: The AudioContext Lobotomy (V3 - Working) ─────────────────────
   window.AudioContext = window.webkitAudioContext = function() {
     return {
       createGain: () => ({ connect: ()=>{}, disconnect: ()=>{}, gain: { value: 0 } }),
@@ -836,19 +834,13 @@ async function _bootEJS(rom, romUrl) {
   window.EJS_backgroundColor = '#000000';
 
   // ── HACK 2: The Native Resolution Lock ─────────────────────────────────────
-  // Forces the internal EJS WebGL/2D canvas to render exactly at the dumbphone's
-  // physical resolution. Stops the cloud server from trying to encode a 1080p canvas.
   window.EJS_canvasWidth     = _isLandscape ? SCREEN.h : SCREEN.w;
   window.EJS_canvasHeight    = _isLandscape ? SCREEN.w : SCREEN.h;
 
-  // ── HACK 3: Disable Compositor & Filtering Overhead ────────────────────────
-  window.EJS_disableDatabases = true; // Prevents EJS from doing background IndexedDB syncs
-  window.EJS_core_options     = {
-    video_filter: 'none', // Disables internal software filters if core supports it
-    hw_render: 'true'     // Requests hardware rendering
-  };
+  // ── HACK 3: Disable Compositor Overhead (Fixed WebGL Stall) ──────────────
+  window.EJS_disableDatabases = true; 
+  window.EJS_core_options     = { video_filter: 'none' }; // Removed hw_render
 
-  window.EJS_VirtualGamepadSettings = { disabled: true };
   window.EJS_Buttons = {
     playPause: false, restart: false, mute: false, settings: false,
     fullscreen: false, saveState: false, loadState: false,
@@ -875,14 +867,15 @@ async function _bootEJS(rom, romUrl) {
   }
 
   window.EJS_onGameStart = () => {
-    document.getElementById('loading-msg').style.display = 'none';
+    // FIXED: Use optional chaining (?) so it doesn't crash if EJS already deleted the loader
+    const loadingMsg = document.getElementById('loading-msg');
+    if (loadingMsg) loadingMsg.style.display = 'none';
+
     _setSaveStatus(window.EJS_loadStateURL ? 'LOADED!' : 'NEW GAME', 'active');
     _clearSaveStatus();
     dbg('EJS_onGameStart fired');
 
-    // ── HACK 4: Polling Canvas Isolator (Updated) ────────────────────────────
-    // Emscripten can take an unpredictable amount of time to inject the canvas.
-    // Instead of a blind timeout, we poll every 100ms until we find it.
+    // ── HACK 4: Polling Canvas Isolator ──────────────────────────────────────
     let attempts = 0;
     const findCanvas = setInterval(() => {
       const canvas = document.querySelector('canvas'); 
@@ -890,9 +883,8 @@ async function _bootEJS(rom, romUrl) {
           canvas.style.imageRendering = 'pixelated';
           canvas.style.transform = 'translateZ(0)'; 
           dbg('Hack 4: Canvas isolated');
-          clearInterval(findCanvas); // Stop checking once we find it
+          clearInterval(findCanvas); 
       } else if (attempts++ > 50) { 
-          // Give up after 5 seconds to prevent infinite loops
           dbg('Hack 4 ERR: Canvas not found');
           clearInterval(findCanvas);
       }
@@ -904,8 +896,10 @@ async function _bootEJS(rom, romUrl) {
   script.className = 'ejs-script';
   script.onerror   = () => {
     dbg('EJS loader.js failed');
-    document.getElementById('loading-msg').innerHTML =
-      'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
+    const loadingMsg = document.getElementById('loading-msg');
+    if (loadingMsg) {
+      loadingMsg.innerHTML = 'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
+    }
   };
   document.body.appendChild(script);
 }
