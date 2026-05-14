@@ -47,9 +47,7 @@ async function initAuth() {
   const session = sessionData?.session;
 
   if (session?.user) {
-    // Check if this session has Drive scopes (provider_token present)
     if (!session.provider_token) {
-      // Old session without Drive scopes — force re-auth
       dbgAuth('Session missing provider_token — needs re-auth for Drive scopes');
       await _supabase.auth.signOut();
       showAuthScreen();
@@ -57,8 +55,16 @@ async function initAuth() {
       _authReadyResolve(null);
       return;
     }
-    window._providerToken        = session.provider_token;
-    window._providerRefreshToken = session.provider_refresh_token || null;
+    
+    window._providerToken = session.provider_token;
+    
+    // NEW: Save the refresh token to local storage if Google provided it
+    if (session.provider_refresh_token) {
+      localStorage.setItem('emu_rt', session.provider_refresh_token);
+    }
+    // Set our working variable from local storage
+    window._providerRefreshToken = localStorage.getItem('emu_rt');
+    
     handleSignedIn(session.user);
   } else {
     showAuthScreen();
@@ -67,8 +73,14 @@ async function initAuth() {
 
   _supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session?.user) {
-      window._providerToken        = session.provider_token || null;
-      window._providerRefreshToken = session.provider_refresh_token || null;
+      window._providerToken = session.provider_token || null;
+      
+      // NEW: Catch the token on sign-in event
+      if (session.provider_refresh_token) {
+        localStorage.setItem('emu_rt', session.provider_refresh_token);
+      }
+      window._providerRefreshToken = localStorage.getItem('emu_rt');
+      
       handleSignedIn(session.user);
     } else if (event === 'SIGNED_OUT') {
       handleSignedOut();
@@ -103,6 +115,10 @@ function handleSignedOut() {
   window.currentUser           = null;
   window._providerToken        = null;
   window._providerRefreshToken = null;
+  
+  // Clear the local storage when the user intentionally clicks sign out
+  localStorage.removeItem('emu_rt'); 
+  
   dbgAuth('Signed out');
   showAuthScreen();
   document.getElementById('selector').style.display        = 'none';
@@ -113,15 +129,23 @@ function handleSignedOut() {
 async function signInWithGoogle() {
   if (!_supabase) { setAuthStatus('Auth not ready', 'err'); return; }
   setAuthStatus('Opening Google sign-in...', '');
+  
+  // NEW: Check if we already have a refresh token saved
+  const hasToken = !!localStorage.getItem('emu_rt');
+  const qParams = { access_type: 'offline' };
+  
+  // If we DON'T have one, force the consent screen to get it.
+  if (!hasToken) {
+    qParams.prompt = 'consent';
+  }
+
   try {
     const { error } = await _supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.appdata',
         redirectTo: window.location.href.split('#')[0].split('?')[0],
-        queryParams: {
-          access_type: 'offline',   // get a refresh_token so Drive access survives past 1hr
-        },
+        queryParams: qParams, // Use our smart parameters
       }
     });
     if (error) throw error;
