@@ -803,25 +803,6 @@ async function _bootEJS(rom, romUrl) {
     URL.revokeObjectURL(window._lastStateBlobUrl);
     window._lastStateBlobUrl = null;
   }
-
-  // ── HACK 1: The AudioContext Lobotomy (V3 - Working) ─────────────────────
-  window.AudioContext = window.webkitAudioContext = function() {
-    return {
-      createGain: () => ({ connect: ()=>{}, disconnect: ()=>{}, gain: { value: 0 } }),
-      createBufferSource: () => ({ connect: ()=>{}, disconnect: ()=>{}, start: ()=>{}, stop: ()=>{}, playbackRate: { value: 1 } }),
-      createScriptProcessor: () => ({ connect: ()=>{}, disconnect: ()=>{} }),
-      createPanner: () => ({ connect: ()=>{}, disconnect: ()=>{}, setPosition: ()=>{}, setOrientation: ()=>{}, setVelocity: ()=>{} }),
-      createDynamicsCompressor: () => ({ connect: ()=>{}, disconnect: ()=>{}, threshold: {}, knee: {}, ratio: {}, reduction: {}, attack: {}, release: {} }),
-      resume: () => Promise.resolve(),
-      suspend: () => Promise.resolve(),
-      close: () => Promise.resolve(),
-      destination: { connect: ()=>{}, disconnect: ()=>{} },
-      state: 'running',
-      sampleRate: 44100,
-      currentTime: 0,
-      listener: { setPosition: ()=>{}, setOrientation: ()=>{}, setVelocity: ()=>{} }
-    };
-  };
 	
   window.EJS_player          = '#emulator-wrapper';
   window.EJS_gameName        = rom.file;
