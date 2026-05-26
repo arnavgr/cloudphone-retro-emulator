@@ -751,6 +751,7 @@ function exitRom() {
   }
   setLandscape(false);
   _currentRom = null;
+  // document.getElementById('scanlines').style.display = 'block'; //uncomment this if scanlines dont appear after exiting
   window.location.reload();
 }
 
@@ -769,6 +770,7 @@ async function launchRom(index) {
   document.getElementById('emulator-screen').style.display = 'flex';
   document.getElementById('emu-title').textContent          = rom.name.toUpperCase();
   document.getElementById('loading-msg').style.display      = 'flex';
+  document.getElementById('scanlines').style.display = 'none';
   _setSaveStatus('ROM DL...', 'saving');
 
   if (!rom.landscape) _renderPortraitHints();
@@ -801,18 +803,25 @@ async function _bootEJS(rom, romUrl) {
     URL.revokeObjectURL(window._lastStateBlobUrl);
     window._lastStateBlobUrl = null;
   }
-
+	
   window.EJS_player          = '#emulator-wrapper';
   window.EJS_gameName        = rom.file;
   window.EJS_gameUrl         = romUrl;
   window.EJS_core            = rom.core;
   window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/';
   window.EJS_startOnLoaded   = true;
-  window.EJS_muted           = true;
+  window.EJS_muted           = true; 
   window.EJS_color           = '#00ff41';
   window.EJS_backgroundColor = '#000000';
 
-  window.EJS_VirtualGamepadSettings = { disabled: true };
+  // ── HACK 2: The Native Resolution Lock ─────────────────────────────────────
+  window.EJS_canvasWidth     = _isLandscape ? SCREEN.h : SCREEN.w;
+  window.EJS_canvasHeight    = _isLandscape ? SCREEN.w : SCREEN.h;
+
+  // ── HACK 3: Disable Compositor Overhead (Fixed WebGL Stall) ──────────────
+  window.EJS_disableDatabases = true; 
+  window.EJS_core_options     = { video_filter: 'none' }; // Removed hw_render
+
   window.EJS_Buttons = {
     playPause: false, restart: false, mute: false, settings: false,
     fullscreen: false, saveState: false, loadState: false,
@@ -824,25 +833,29 @@ async function _bootEJS(rom, romUrl) {
 
   await _loadBios(rom.core);
 
-  _setSaveStatus('CLOUD CHECK...', 'saving');
-  let stateBytes = null;
-  try { stateBytes = await _cloudDownload(window.EJS_gameName); }
-  catch (err) { dbg('Cloud check ERR: ' + err.message); }
-
-  if (stateBytes?.byteLength) {
-    const blob = new Blob([stateBytes], { type: 'application/octet-stream' });
-    window._lastStateBlobUrl = URL.createObjectURL(blob);
-    window.EJS_loadStateURL  = window._lastStateBlobUrl;
-    dbg('State ready: ' + stateBytes.byteLength + 'B');
-  } else {
-    dbg('No cloud save — fresh boot');
-  }
-
   window.EJS_onGameStart = () => {
-    document.getElementById('loading-msg').style.display = 'none';
-    _setSaveStatus(window.EJS_loadStateURL ? 'LOADED!' : 'NEW GAME', 'active');
+    // FIXED: Use optional chaining (?) so it doesn't crash if EJS already deleted the loader
+    const loadingMsg = document.getElementById('loading-msg');
+    if (loadingMsg) loadingMsg.style.display = 'none';
+
+    _setSaveStatus('NEW GAME', 'active');
     _clearSaveStatus();
     dbg('EJS_onGameStart fired');
+
+    // ── HACK 4: Polling Canvas Isolator ──────────────────────────────────────
+    let attempts = 0;
+    const findCanvas = setInterval(() => {
+      const canvas = document.querySelector('canvas'); 
+      if (canvas) {
+          canvas.style.imageRendering = 'pixelated';
+          canvas.style.transform = 'translateZ(0)'; 
+          dbg('Hack 4: Canvas isolated');
+          clearInterval(findCanvas); 
+      } else if (attempts++ > 50) { 
+          dbg('Hack 4 ERR: Canvas not found');
+          clearInterval(findCanvas);
+      }
+    }, 100);
   };
 
   const script     = document.createElement('script');
@@ -850,8 +863,10 @@ async function _bootEJS(rom, romUrl) {
   script.className = 'ejs-script';
   script.onerror   = () => {
     dbg('EJS loader.js failed');
-    document.getElementById('loading-msg').innerHTML =
-      'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
+    const loadingMsg = document.getElementById('loading-msg');
+    if (loadingMsg) {
+      loadingMsg.innerHTML = 'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
+    }
   };
   document.body.appendChild(script);
 }
