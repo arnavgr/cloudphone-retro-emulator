@@ -14,7 +14,7 @@ This project runs entirely in the browser, leveraging **EmulatorJS** for hardwar
 
 ## 🎮 Supported Systems
 
-*   **Nintendo:** GB, GBC, GBA, NES, SNES, N64.
+*   **Nintendo:** GB, GBC, GBA, NES, SNES.
 *   **Sega:** Game Gear (GG), Master System (SMS), Genesis/Mega Drive (MD).
 *   **Sony:** PlayStation 1 (PSX).
 
@@ -38,7 +38,6 @@ cloudphone-emulator/
  ├─ gg/       (.gg)
  ├─ sms/      (.sms)
  ├─ genesis/  (.md / .bin)
- ├─ n64/      (.z64 / .n64 / .v64)
  └─ bios/     (Required BIOS files --> scph1001.bin for PSX,etc)
  ```
 
