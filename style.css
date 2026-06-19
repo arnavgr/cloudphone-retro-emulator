@@ -205,21 +205,24 @@ html, body {
   color: var(--sc, #888); letter-spacing: 1px;
 }
 
+/* User bar — compact for small screens */
 .auth-user-bar {
-  display: flex; align-items: center; gap: 6px;
+  display: flex; align-items: center; gap: 4px;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 6px; padding: 4px 8px;
+  border-radius: 4px; padding: 3px 5px;
+  min-width: 0; overflow: hidden;
 }
 .auth-user-name {
-  font-family: var(--font-pixel); font-size: 5px; color: var(--green);
-  letter-spacing: 1px; flex: 1; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap; max-width: 80px;
+  font-family: var(--font-mono); font-size: 7px; color: var(--green);
+  letter-spacing: 0.3px; flex: 1; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
 }
 .auth-sign-out {
   color: var(--text-dim); background: none; border: 1px solid transparent;
-  font-family: var(--font-pixel); font-size: 5px; cursor: pointer;
-  letter-spacing: 1px; flex-shrink: 0; padding: 2px 4px;
-  border-radius: 3px; transition: all 0.15s;
+  font-family: var(--font-mono); font-size: 7px; font-weight: 700;
+  cursor: pointer; letter-spacing: 0.5px; flex-shrink: 0;
+  padding: 1px 3px; border-radius: 2px; transition: all 0.15s;
 }
 .auth-sign-out:hover { color: var(--red); border-color: var(--red); }
 .auth-sign-out:focus {
@@ -230,7 +233,7 @@ html, body {
 
 
 /* ══════════════════════════════════════════════════════════════
-   SELECTOR SCREEN — flex column, fixed bottom
+   SELECTOR SCREEN
    ══════════════════════════════════════════════════════════════ */
 #selector {
   display: none; flex-direction: column; align-items: center;
@@ -241,7 +244,6 @@ html, body {
     repeating-linear-gradient(90deg,  transparent, transparent 23px, rgba(0,255,65,0.012) 23px, rgba(0,255,65,0.012) 24px);
 }
 
-/* Header */
 .selector-header {
   width: 100%; display: flex; align-items: center;
   justify-content: space-between; padding: 8px 2px 4px;
@@ -249,7 +251,7 @@ html, body {
   flex-shrink: 0;
 }
 .header-left { display: flex; align-items: center; gap: 8px; }
-.header-right { display: flex; align-items: center; gap: 4px; }
+.header-right { display: flex; align-items: center; gap: 4px; min-width: 0; }
 
 .logo {
   font-family: var(--font-pixel); font-size: 10px;
@@ -261,7 +263,7 @@ html, body {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: 4px; color: var(--text-dim); padding: 4px 5px;
   cursor: pointer; display: flex; align-items: center;
-  justify-content: center; transition: all 0.15s;
+  justify-content: center; transition: all 0.15s; flex-shrink: 0;
 }
 .icon-btn:hover { border-color: var(--green); color: var(--green); }
 .icon-btn:focus {
@@ -311,7 +313,6 @@ html, body {
 .cat-btn.active .cat-count { opacity: 0.6; }
 
 
-/* Section header */
 .section-header {
   width: 100%; display: flex; align-items: center;
   justify-content: space-between; margin-bottom: 4px;
@@ -323,7 +324,7 @@ html, body {
 }
 
 
-/* ── ROM Scroll Area — takes remaining space ── */
+/* ── ROM Scroll Area ── */
 .rom-scroll-area {
   flex: 1; min-height: 0; width: 100%;
   overflow-y: auto; overflow-x: hidden;
@@ -331,7 +332,6 @@ html, body {
   scrollbar-width: thin;
 }
 
-/* ── ROM List ── */
 .rom-list {
   width: 100%; display: flex; flex-direction: column;
   gap: 3px;
@@ -407,7 +407,7 @@ html, body {
 .rom-badge.gen  { background: rgba(232,121,249,0.12); color: var(--sys-gen);  }
 
 
-/* ── Selector Bottom — always visible ── */
+/* ── Selector Bottom ── */
 .selector-bottom {
   flex-shrink: 0; width: 100%;
   padding-top: 4px;
@@ -426,7 +426,6 @@ html, body {
 .selector-help-hint span { color: var(--gold); font-weight: 700; }
 
 
-/* ── Drive Setup Hint ── */
 .drive-setup-hint {
   width: 100%; background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px;
@@ -448,7 +447,6 @@ html, body {
 .hint-body code { color: var(--green); font-weight: 700; }
 
 
-/* ── Keymap ── */
 .keymap {
   width: 100%; background: var(--surface);
   border: 1px solid var(--border); border-radius: 4px;
