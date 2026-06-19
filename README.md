@@ -16,7 +16,7 @@ This project runs entirely in the browser, leveraging **EmulatorJS** for hardwar
 
 *   **Nintendo:** GB, GBC, GBA, NES, SNES.
 *   **Sega:** Game Gear (GG), Master System (SMS), Genesis/Mega Drive (MD).
-*   **Sony:** PlayStation 1 (PSX).
+*   **Sony:** PlayStation 1 (PS1/PSX).
 
 ## 🚀 Setup & Installation
 

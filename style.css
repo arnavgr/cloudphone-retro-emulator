@@ -166,9 +166,8 @@ body.landscape #keybinds-overlay { width: 100vh; height: 100vw; transform: rotat
 .keybinds-close span { color: var(--gold); }
 
 /* ── SAVE CONFIRM ── */
-#save-confirm { display: none; position: fixed; top: 0; left: 0; width: 100vw; background: rgba(0,0,0,0.95); border-bottom: 1px solid var(--red); padding: 8px; z-index: 9999; flex-direction: column; gap: 4px; }
+#save-confirm { display: none; position: fixed; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.95); border-bottom: 1px solid var(--red); padding: 8px; z-index: 9999; flex-direction: column; gap: 4px; }
 #save-confirm.visible { display: flex; }
-body.landscape #save-confirm { width: 100vh; transform: rotate(90deg); transform-origin: top left; margin-left: 100vw; }
 
 .confirm-title { font-size: 8px; letter-spacing: 2px; color: var(--red); text-transform: uppercase; }
 .confirm-msg   { font-size: 9px; color: var(--text); }

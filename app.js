@@ -218,9 +218,12 @@ const _cache = {
 // ══════════════════════════════════════════════════════════════
 let ROMS                = [];
 let _romIndex           = 0;
+let _currentSlot        = 0;        
+const MAX_SLOTS         = 4;
 let _currentRom         = null;
 let _saveConfirmPending = false;
 let _isLandscape        = false;
+let _isScanning         = false;
 const _log              = [];
 
 // ══════════════════════════════════════════════════════════════
@@ -369,6 +372,9 @@ async function driveWriteAppFile(filename, bytes, existingId = null) {
 // ROM DISCOVERY
 // ══════════════════════════════════════════════════════════════
 async function discoverRoms() {
+  if (_isScanning) return;
+  _isScanning = true;
+
   _setRomListMsg('SCANNING DRIVE...');
   dbg('discoverRoms: start — screen ' + SCREEN.toString());
 
@@ -386,6 +392,8 @@ async function discoverRoms() {
     dbg('Subfolders: ' + subfolders.map(f => f.name).join(', '));
 
     ROMS = [];
+    const seenRoms = new Set();
+
     for (const folder of subfolders) {
       const key = folder.name.toLowerCase();
       const sys = SYSTEMS[key];
@@ -397,8 +405,15 @@ async function discoverRoms() {
       for (const file of files) {
         const ext = '.' + file.name.split('.').pop().toLowerCase();
         if (!sys.exts.includes(ext)) continue;
+        
+        const name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+        const dedupeKey = `${key}-${name}`;
+
+        if (seenRoms.has(dedupeKey)) continue;
+        seenRoms.add(dedupeKey);
+
         ROMS.push({
-          name:      file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' '),
+          name:      name,
           file:      file.name,
           fileId:    file.id,
           core:      sys.core,
@@ -429,6 +444,8 @@ async function discoverRoms() {
         ? 'DRIVE PERMISSION ERROR — sign out and sign in again'
         : 'DRIVE ERROR: ' + err.message
     );
+  } finally {
+    _isScanning = false;
   }
 }
 
@@ -535,7 +552,8 @@ function _saveKey(gameName) {
   const uid  = window.currentUser?.id || 'anon';
   const base = gameName.replace(/\.[^.]+$/, '');
   const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return uid + '_' + safe + '.state';
+  const slotSuffix = _currentSlot === 0 ? '' : `_slot${_currentSlot}`;
+  return uid + '_' + safe + slotSuffix + '.state';
 }
 
 async function _cloudSaveExists(gameName) {
@@ -751,8 +769,25 @@ function exitRom() {
   }
   setLandscape(false);
   _currentRom = null;
-  // document.getElementById('scanlines').style.display = 'block'; //uncomment this if scanlines dont appear after exiting
-  window.location.reload();
+
+  // 1. Transition UI state back to the ROM selector
+  document.getElementById('emulator-screen').style.display = 'none';
+  document.getElementById('selector').style.display        = 'flex';
+  document.getElementById('scanlines').style.display       = 'block';
+
+  // 2. Halt the active emulation engine to free CPU cycles
+  if (window.EJS_emulator && typeof window.EJS_emulator.gameManager?.pause === 'function') {
+    window.EJS_emulator.gameManager.pause();
+  }
+
+  // 3. Purge the EmulatorJS DOM injections to prevent memory leaks on next load
+  const wrapper = document.getElementById('emulator-wrapper');
+  if (wrapper) {
+    [...wrapper.children].forEach(c => { if (c.id !== 'loading-msg') c.remove(); });
+  }
+  document.querySelectorAll('.ejs-script').forEach(s => s.remove());
+  delete window.EJS_emulator;
+
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -888,6 +923,26 @@ window.addEventListener('back', (e) => {
 // ══════════════════════════════════════════════════════════════
 // KEYBOARD HANDLER
 // ══════════════════════════════════════════════════════════════
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Call') {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    const inEmu = document.getElementById('emulator-screen').style.display !== 'none';
+    if (inEmu) {
+      _currentSlot = (_currentSlot + 1) % MAX_SLOTS;
+      _setSaveStatus(`SLOT ${_currentSlot}`, 'active');
+      _clearSaveStatus(1500);
+    }
+  }
+}, true); 
+
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'Call') {
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
+
 document.addEventListener('keydown', (e) => {
   const inSel = document.getElementById('selector').style.display        !== 'none';
   const inEmu = document.getElementById('emulator-screen').style.display !== 'none';
@@ -914,6 +969,13 @@ document.addEventListener('keydown', (e) => {
   }
 
   if (inEmu) {
+    if (e.key === 'Call') { 
+      e.preventDefault(); 
+      _currentSlot = (_currentSlot + 1) % MAX_SLOTS; 
+      _setSaveStatus(`SLOT ${_currentSlot}`, 'active'); 
+      _clearSaveStatus(1500);
+    }
+
     if (e.key === '7') { e.preventDefault(); manualLoad(); }
     if (e.key === '8') { e.preventDefault(); toggleDebug(); }
     if (e.key === '9') { e.preventDefault(); manualSave(); }
