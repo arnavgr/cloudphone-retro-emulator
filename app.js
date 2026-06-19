@@ -4,35 +4,18 @@
 
 // ══════════════════════════════════════════════════════════════
 // SCREEN CLASS DETECTION
-// Runs once at startup. Uses physical screen pixels (screen.width/height)
-// not CSS pixels, so it's unaffected by browser zoom or scaling.
-//
-// Classes:
-//   standard  — 240×320 and above
-//   small     — anything ≤ 160px on either axis (128×160, 120×160, etc.)
 // ══════════════════════════════════════════════════════════════
 const _SW = window.screen.width;
 const _SH = window.screen.height;
 const SCREEN = {
   w:        _SW,
   h:        _SH,
-  isSmall:  Math.min(_SW, _SH) <= 160,   // true for 128×160 / 120×160
+  isSmall:  Math.min(_SW, _SH) <= 160,
   toString() { return `${_SW}×${_SH} (${this.isSmall ? 'small' : 'standard'})`; },
 };
 
 // ══════════════════════════════════════════════════════════════
 // SYSTEM REGISTRY
-// ══════════════════════════════════════════════════════════════
-// landscape      — orientation for standard (240×320) screens
-// smallLandscape — orientation override for small (≤160px) screens
-//
-// 240×320 orientation rules:
-//   PSX, Genesis, SNES, NES, SMS → Landscape
-//   GBA, GB, GBC, GG             → Portrait
-//
-// 120×160 / small screens:
-//   ALL systems → Portrait (smallLandscape: false)
-//   (future consoles that need landscape on small can opt-in)
 // ══════════════════════════════════════════════════════════════
 const SYSTEMS = {
   gb:      { core: 'gambatte',     exts: ['.gb'],          label: 'GB',   cls: 'gb',   landscape: false, smallLandscape: true },
@@ -46,7 +29,15 @@ const SYSTEMS = {
   genesis: { core: 'segaMD',       exts: ['.md', '.bin', '.gen'], label: 'GEN', cls: 'gen', landscape: true, smallLandscape: true },
 };
 
-// Resolve the actual landscape value for the current screen
+// System color map for category bar and ROM items
+const SYS_COLORS = {
+  gb: '#00ff41', gbc: '#7cfc00', gba: '#ffd700', nes: '#ff6b6b',
+  snes: '#a78bfa', psx: '#60a5fa', gg: '#fb923c', sms: '#f87171', genesis: '#e879f9',
+};
+
+// Order for category bar display
+const SYS_ORDER = ['gb', 'gbc', 'gba', 'nes', 'snes', 'psx', 'gg', 'sms', 'genesis'];
+
 function _resolveLandscape(sys) {
   if (SCREEN.isSmall) {
     return sys.smallLandscape !== undefined ? sys.smallLandscape : sys.landscape;
@@ -77,11 +68,7 @@ function _pad(dpad, { a, b, x = '', y = '', start, select, l = '', r = '', l2 = 
   };
 }
 
-// Portrait d-pad
 const _P = ['up arrow', 'down arrow', 'left arrow', 'right arrow'];
-
-// Landscape d-pad — screen rotated 90° CW, game top is on RIGHT of phone.
-// Physical: UP→game RIGHT | DOWN→game LEFT | LEFT→game UP | RIGHT→game DOWN
 const _L = ['right arrow', 'left arrow', 'up arrow', 'down arrow'];
 
 const _BTNS     = { a: 'enter', b: '1', start: 'escape', select: '3' };
@@ -89,16 +76,9 @@ const _BTNS_EXT = { ..._BTNS, x: '4', y: '2', l: '5', r: '6' };
 
 function _genesisControls(dpad) {
   return {
-    0:  { value: '1'      }, // B
-    1:  { value: '4'      }, // C
-    2:  { value: '3'      }, // Mode
-    3:  { value: ''       }, // unused
-    4:  { value: dpad[0] }, 5: { value: dpad[1] },
-    6:  { value: dpad[2] }, 7: { value: dpad[3] },
-    8:  { value: 'enter'  }, // A
-    9:  { value: 'escape' }, // Start
-    10: { value: '5' },      // X
-    11: { value: '6' },      // Y/Z
+    0:  { value: '1'      }, 1:  { value: '4'      }, 2:  { value: '3'      }, 3: { value: ''       },
+    4:  { value: dpad[0] }, 5: { value: dpad[1] }, 6: { value: dpad[2] }, 7: { value: dpad[3] },
+    8:  { value: 'enter'  }, 9:  { value: 'escape' }, 10: { value: '5' },      11:{ value: '6' },
     12: { value: '' }, 13: { value: '' }, 14: { value: '' }, 15: { value: '' },
     24: { value: '' }, 25: { value: '' }, 26: { value: '' }, 27: { value: '' },
     28: { value: '' }, 29: { value: '' },
@@ -122,13 +102,11 @@ function getControls(core, landscape) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// KEYBIND DEFINITIONS (popup display)
+// KEYBIND DEFINITIONS
 // ══════════════════════════════════════════════════════════════
 const _KP = [
-  { key: '↑↓←→', action: 'D-PAD'  },
-  { key: 'ENTER', action: 'A'      },
-  { key: '1',     action: 'B'      },
-  { key: 'ESC',   action: 'START'  },
+  { key: '↑↓←→', action: 'D-PAD'  }, { key: 'ENTER', action: 'A'      },
+  { key: '1',     action: 'B'      }, { key: 'ESC',   action: 'START'  },
   { key: '3',     action: 'SELECT' },
 ];
 const _KP_EXT = [..._KP,
@@ -171,13 +149,13 @@ function getKeybinds(rom) {
   switch (rom.folder) {
     case 'gb':
     case 'gbc':     return [...(ls ? _KL     : _KP),     ..._KMETA];
-    case 'gba':     return [..._KP,                       ..._KMETA]; // portrait on all screens
+    case 'gba':     return [..._KP,                       ..._KMETA];
     case 'gg':      return [...(ls ? _KL_GEN : _KP_GEN), ..._KMETA];
     case 'sms':     return [...(ls ? _KL     : _KP),     ..._KMETA];
-    case 'genesis': return [..._KL_GEN,                   ..._KMETA]; // always landscape on standard
-    case 'nes':     return [..._KL,                       ..._KMETA]; // landscape on standard
-    case 'snes':    return [..._KL,                       ..._KMETA]; // landscape on standard
-    case 'psx':     return [..._KL,                       ..._KMETA]; // landscape on standard
+    case 'genesis': return [..._KL_GEN,                   ..._KMETA];
+    case 'nes':     return [..._KL,                       ..._KMETA];
+    case 'snes':    return [..._KL,                       ..._KMETA];
+    case 'psx':     return [..._KL,                       ..._KMETA];
     default:        return [..._KP,                       ..._KMETA];
   }
 }
@@ -217,8 +195,10 @@ const _cache = {
 // APP STATE
 // ══════════════════════════════════════════════════════════════
 let ROMS                = [];
+let _filteredRoms       = [];     // ← NEW: currently visible ROMs based on category
+let _activeCategory     = 'all';  // ← NEW: active category filter
 let _romIndex           = 0;
-let _currentSlot        = 0;        
+let _currentSlot        = 0;
 const MAX_SLOTS         = 4;
 let _currentRom         = null;
 let _saveConfirmPending = false;
@@ -236,12 +216,10 @@ function dbg(msg) {
   const el = document.getElementById('debug-log');
   if (el) {
     el.textContent = _log.join('\n');
-    // Auto-scroll to bottom so latest message is always visible
     el.scrollTop = el.scrollHeight;
   }
 }
 
-// ── Debug overlay — scrollable, stays open until 8 is pressed ─────────────────
 function toggleDebug() {
   let el = document.getElementById('debug-overlay');
   if (!el) {
@@ -250,14 +228,14 @@ function toggleDebug() {
     el.style.cssText = [
       'position:fixed;top:0;left:0;z-index:999999;',
       'display:flex;flex-direction:column;',
-      'background:rgba(0,0,0,0.96);border:1px solid #00ff41;',
+      'background:rgba(4,4,8,0.97);border:1px solid #00ff41;',
       'padding:0;font-family:monospace;color:#00ff41;',
       _isLandscape
         ? 'width:100vh;height:100vw;transform:rotate(90deg);transform-origin:top left;margin-left:100vw;'
         : 'width:100vw;height:100vh;',
     ].join('');
     el.innerHTML =
-      '<div style="color:#ffd700;letter-spacing:2px;padding:6px 8px;border-bottom:1px solid #333;flex-shrink:0;font-size:9px;">'
+      '<div style="color:#ffd700;letter-spacing:2px;padding:6px 8px;border-bottom:1px solid #1a1a30;flex-shrink:0;font-size:9px;">'
       + 'DEBUG — press 8 to close</div>'
       + '<pre id="debug-log" style="'
       + 'flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;'
@@ -275,7 +253,6 @@ function toggleDebug() {
     const logEl = document.getElementById('debug-log');
     if (logEl) {
       logEl.textContent = _log.join('\n') || 'No logs yet.';
-      // Scroll to bottom so the latest entry is visible on open
       setTimeout(() => { logEl.scrollTop = logEl.scrollHeight; }, 0);
     }
   }
@@ -405,7 +382,7 @@ async function discoverRoms() {
       for (const file of files) {
         const ext = '.' + file.name.split('.').pop().toLowerCase();
         if (!sys.exts.includes(ext)) continue;
-        
+
         const name = file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
         const dedupeKey = `${key}-${name}`;
 
@@ -435,7 +412,7 @@ async function discoverRoms() {
     }
 
     _prefetchBios();
-    _buildRomList();
+    _buildRomList();  // ← This now handles categories + filtered list
 
   } catch (err) {
     dbg('discoverRoms ERR: ' + err.message);
@@ -495,23 +472,11 @@ async function _loadBios(core) {
 // ══════════════════════════════════════════════════════════════
 // PROACTIVE TOKEN REFRESH
 // ══════════════════════════════════════════════════════════════
-// Called before any Drive upload to ensure the token is fresh.
-// This is the key fix for the 1hr save failure: instead of waiting
-// for a 401 mid-upload (which the PATCH endpoint won't retry cleanly),
-// we proactively force a refresh if the token is likely to be stale.
-//
-// Strategy:
-//   - Track when the provider_token was last confirmed fresh.
-//   - If it's been more than 50 minutes, force a full refresh cycle
-//     (Supabase session refresh → Cloudflare Worker) BEFORE the upload.
-//   - This ensures the upload uses a token with at least ~10 min of life.
-// ══════════════════════════════════════════════════════════════
-let _tokenLastRefreshed = Date.now(); // assume fresh on page load / sign-in
+let _tokenLastRefreshed = Date.now();
 
-// Call this before any Drive write operation.
 async function _ensureFreshToken() {
   const AGE_MS = Date.now() - _tokenLastRefreshed;
-  const REFRESH_THRESHOLD_MS = 50 * 60 * 1000; // 50 minutes
+  const REFRESH_THRESHOLD_MS = 50 * 60 * 1000;
 
   if (AGE_MS < REFRESH_THRESHOLD_MS) {
     dbg('Token age: ' + Math.round(AGE_MS / 60000) + 'min — skipping proactive refresh');
@@ -519,8 +484,6 @@ async function _ensureFreshToken() {
   }
 
   dbg('Token age: ' + Math.round(AGE_MS / 60000) + 'min — proactive refresh before upload');
-
-  // Clear the cached provider token to force getDriveToken() to fully refresh
   window._providerToken = null;
 
   const token = await window.getDriveToken();
@@ -532,13 +495,11 @@ async function _ensureFreshToken() {
   }
 }
 
-// Reset the refresh timer whenever auth succeeds (sign-in or token_refreshed event)
 function _markTokenFresh() {
   _tokenLastRefreshed = Date.now();
   dbg('Token marked fresh at ' + new Date().toTimeString().slice(0, 8));
 }
 
-// Hook into auth events so the timer resets properly
 const _origOnAuthSuccess = window.onAuthSuccess;
 window.onAuthSuccess = function(user) {
   _markTokenFresh();
@@ -582,14 +543,13 @@ async function _cloudUpload(gameName, bytes) {
   const filename = _saveKey(gameName);
   dbg('UL save: ' + filename + ' (' + bytes.byteLength + 'B)');
 
-  // Proactively refresh the token before uploading — fixes 1hr expiry UL errors
   await _ensureFreshToken();
 
   try {
     const existingId = await driveFindAppFile(filename);
     const ok = await driveWriteAppFile(filename, bytes, existingId);
     if (ok) {
-      _tokenLastRefreshed = Date.now(); // successful upload confirms token works; reset timer
+      _tokenLastRefreshed = Date.now();
       dbg('UL save: OK');
     } else {
       dbg('UL save: FAILED (driveWriteAppFile returned false)');
@@ -599,6 +559,103 @@ async function _cloudUpload(gameName, bytes) {
     dbg('UL save ERR: ' + err.message);
     return false;
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// CATEGORY SYSTEM  ← NEW
+// ══════════════════════════════════════════════════════════════
+function _buildCategoryBar() {
+  const bar = document.getElementById('category-bar');
+  if (!bar) return;
+  bar.innerHTML = '';
+
+  // Count ROMs per system
+  const counts = {};
+  ROMS.forEach(r => { counts[r.folder] = (counts[r.folder] || 0) + 1; });
+
+  // "ALL" button
+  const allBtn = document.createElement('button');
+  allBtn.className = 'cat-btn' + (_activeCategory === 'all' ? ' active' : '');
+  allBtn.dataset.cat = 'all';
+  allBtn.style.setProperty('--cat-color', '#00ff41');
+  allBtn.innerHTML = `ALL <span class="cat-count">${ROMS.length}</span>`;
+  allBtn.addEventListener('click', () => _setCategory('all'));
+  bar.appendChild(allBtn);
+
+  // System buttons in defined order
+  for (const sys of SYS_ORDER) {
+    if (!counts[sys]) continue;
+    const sysInfo = SYSTEMS[sys];
+    const color = SYS_COLORS[sys] || '#00ff41';
+    const btn = document.createElement('button');
+    btn.className = 'cat-btn' + (_activeCategory === sys ? ' active' : '');
+    btn.dataset.cat = sys;
+    btn.style.setProperty('--cat-color', color);
+    btn.innerHTML = `${sysInfo.label} <span class="cat-count">${counts[sys]}</span>`;
+    btn.addEventListener('click', () => _setCategory(sys));
+    bar.appendChild(btn);
+  }
+}
+
+function _filterRoms() {
+  if (_activeCategory === 'all') {
+    _filteredRoms = [...ROMS];
+  } else {
+    _filteredRoms = ROMS.filter(r => r.folder === _activeCategory);
+    // Fall back to "all" if category is empty
+    if (_filteredRoms.length === 0) {
+      _activeCategory = 'all';
+      _filteredRoms = [...ROMS];
+    }
+  }
+}
+
+function _setCategory(cat) {
+  _activeCategory = cat;
+  _filterRoms();
+  _buildCategoryBar();
+  _buildFilteredList();
+  _romIndex = 0;
+  // Scroll active category button into view
+  const bar = document.getElementById('category-bar');
+  const activeBtn = bar?.querySelector('.cat-btn.active');
+  activeBtn?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+}
+
+function _cycleCategory(direction) {
+  const bar = document.getElementById('category-bar');
+  const buttons = [...(bar?.querySelectorAll('.cat-btn') || [])];
+  if (buttons.length === 0) return;
+  const currentIndex = buttons.findIndex(b => b.dataset.cat === _activeCategory);
+  const newIndex = Math.max(0, Math.min(buttons.length - 1, currentIndex + direction));
+  const newCat = buttons[newIndex]?.dataset.cat;
+  if (newCat && newCat !== _activeCategory) {
+    _setCategory(newCat);
+  }
+}
+
+function _buildFilteredList() {
+  const list = document.getElementById('rom-list');
+  list.innerHTML = '';
+
+  if (_filteredRoms.length === 0) {
+    list.innerHTML = '<div class="rom-list-msg">NO ROMS IN THIS CATEGORY</div>';
+    return;
+  }
+
+  _filteredRoms.forEach((rom, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'rom-item' + (i === 0 ? ' selected' : '');
+    btn.dataset.sys = rom.folder;
+    btn.style.setProperty('--sys-color', SYS_COLORS[rom.folder] || '#00ff41');
+    // Stagger fade-in for first 8 items
+    btn.style.setProperty('--rom-delay', i < 8 ? `${i * 25}ms` : '0ms');
+    btn.innerHTML = `<span class="rom-name">${rom.name}</span><span class="rom-badge ${rom.cls}">${rom.label}</span>`;
+    btn.addEventListener('click', () => launchRom(i));
+    list.appendChild(btn);
+  });
+
+  _romIndex = 0;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -618,6 +675,9 @@ function _clearSaveStatus(delay = 2000) {
 function _setRomListMsg(msg) {
   const el = document.getElementById('rom-list');
   if (el) el.innerHTML = `<div class="rom-list-msg">${msg}</div>`;
+  // Also clear category bar when showing messages
+  const bar = document.getElementById('category-bar');
+  if (bar) bar.innerHTML = '';
 }
 
 function _showSetupHint(show) {
@@ -625,24 +685,19 @@ function _showSetupHint(show) {
   if (el) el.style.display = show ? 'block' : 'none';
 }
 
+// ← MODIFIED: Now builds categories + filtered list
 function _buildRomList() {
-  const list = document.getElementById('rom-list');
-  list.innerHTML = '';
-  ROMS.forEach((rom, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'rom-item' + (i === 0 ? ' selected' : '');
-    btn.innerHTML = `<span class="rom-name">${rom.name}</span><span class="rom-badge ${rom.cls}">${rom.label}</span>`;
-    btn.addEventListener('click', () => launchRom(i));
-    list.appendChild(btn);
-  });
-  _romIndex = 0;
+  _buildCategoryBar();
+  _filterRoms();
+  _buildFilteredList();
 }
 
 function _updateSelection(n) {
-  n = Math.max(0, Math.min(n, ROMS.length - 1));
-  document.querySelectorAll('.rom-item').forEach((el, i) => el.classList.toggle('selected', i === n));
+  n = Math.max(0, Math.min(n, _filteredRoms.length - 1));
+  const items = document.querySelectorAll('.rom-item');
+  items.forEach((el, i) => el.classList.toggle('selected', i === n));
   _romIndex = n;
-  document.querySelectorAll('.rom-item')[n]?.scrollIntoView({ block: 'nearest' });
+  items[n]?.scrollIntoView({ block: 'nearest' });
 }
 
 function _renderPortraitHints() {
@@ -756,7 +811,7 @@ async function manualLoad() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// EXIT — RSK only, no auto-save
+// EXIT
 // ══════════════════════════════════════════════════════════════
 function exitRom() {
   _dismissSaveConfirm();
@@ -770,31 +825,27 @@ function exitRom() {
   setLandscape(false);
   _currentRom = null;
 
-  // 1. Transition UI state back to the ROM selector
   document.getElementById('emulator-screen').style.display = 'none';
   document.getElementById('selector').style.display        = 'flex';
   document.getElementById('scanlines').style.display       = 'block';
 
-  // 2. Halt the active emulation engine to free CPU cycles
   if (window.EJS_emulator && typeof window.EJS_emulator.gameManager?.pause === 'function') {
     window.EJS_emulator.gameManager.pause();
   }
 
-  // 3. Purge the EmulatorJS DOM injections to prevent memory leaks on next load
   const wrapper = document.getElementById('emulator-wrapper');
   if (wrapper) {
     [...wrapper.children].forEach(c => { if (c.id !== 'loading-msg') c.remove(); });
   }
   document.querySelectorAll('.ejs-script').forEach(s => s.remove());
   delete window.EJS_emulator;
-
 }
 
 // ══════════════════════════════════════════════════════════════
-// LAUNCH
+// LAUNCH  ← MODIFIED: uses _filteredRoms
 // ══════════════════════════════════════════════════════════════
 async function launchRom(index) {
-  const rom = ROMS[index];
+  const rom = _filteredRoms[index];   // ← Changed from ROMS[index]
   if (!rom || !window.currentUser) return;
 
   _currentRom         = rom;
@@ -838,24 +889,22 @@ async function _bootEJS(rom, romUrl) {
     URL.revokeObjectURL(window._lastStateBlobUrl);
     window._lastStateBlobUrl = null;
   }
-	
+
   window.EJS_player          = '#emulator-wrapper';
   window.EJS_gameName        = rom.file;
   window.EJS_gameUrl         = romUrl;
   window.EJS_core            = rom.core;
   window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/';
   window.EJS_startOnLoaded   = true;
-  window.EJS_muted           = true; 
+  window.EJS_muted           = true;
   window.EJS_color           = '#00ff41';
   window.EJS_backgroundColor = '#000000';
 
-  // ── HACK 2: The Native Resolution Lock ─────────────────────────────────────
   window.EJS_canvasWidth     = _isLandscape ? SCREEN.h : SCREEN.w;
   window.EJS_canvasHeight    = _isLandscape ? SCREEN.w : SCREEN.h;
 
-  // ── HACK 3: Disable Compositor Overhead (Fixed WebGL Stall) ──────────────
-  window.EJS_disableDatabases = true; 
-  window.EJS_core_options     = { video_filter: 'none' }; // Removed hw_render
+  window.EJS_disableDatabases = true;
+  window.EJS_core_options     = { video_filter: 'none' };
 
   window.EJS_Buttons = {
     playPause: false, restart: false, mute: false, settings: false,
@@ -869,7 +918,6 @@ async function _bootEJS(rom, romUrl) {
   await _loadBios(rom.core);
 
   window.EJS_onGameStart = () => {
-    // FIXED: Use optional chaining (?) so it doesn't crash if EJS already deleted the loader
     const loadingMsg = document.getElementById('loading-msg');
     if (loadingMsg) loadingMsg.style.display = 'none';
 
@@ -877,18 +925,17 @@ async function _bootEJS(rom, romUrl) {
     _clearSaveStatus();
     dbg('EJS_onGameStart fired');
 
-    // ── HACK 4: Polling Canvas Isolator ──────────────────────────────────────
     let attempts = 0;
     const findCanvas = setInterval(() => {
-      const canvas = document.querySelector('canvas'); 
+      const canvas = document.querySelector('canvas');
       if (canvas) {
-          canvas.style.imageRendering = 'pixelated';
-          canvas.style.transform = 'translateZ(0)'; 
-          dbg('Hack 4: Canvas isolated');
-          clearInterval(findCanvas); 
-      } else if (attempts++ > 50) { 
-          dbg('Hack 4 ERR: Canvas not found');
-          clearInterval(findCanvas);
+        canvas.style.imageRendering = 'pixelated';
+        canvas.style.transform = 'translateZ(0)';
+        dbg('Hack 4: Canvas isolated');
+        clearInterval(findCanvas);
+      } else if (attempts++ > 50) {
+        dbg('Hack 4 ERR: Canvas not found');
+        clearInterval(findCanvas);
       }
     }, 100);
   };
@@ -921,7 +968,7 @@ window.addEventListener('back', (e) => {
 });
 
 // ══════════════════════════════════════════════════════════════
-// KEYBOARD HANDLER
+// KEYBOARD HANDLER  ← MODIFIED: added left/right category cycling
 // ══════════════════════════════════════════════════════════════
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Call') {
@@ -934,7 +981,7 @@ window.addEventListener('keydown', (e) => {
       _clearSaveStatus(1500);
     }
   }
-}, true); 
+}, true);
 
 window.addEventListener('keyup', (e) => {
   if (e.key === 'Call') {
@@ -950,29 +997,34 @@ document.addEventListener('keydown', (e) => {
   if (inSel) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      if (_romIndex < ROMS.length - 1) {
+      if (_romIndex < _filteredRoms.length - 1) {
         _updateSelection(_romIndex + 1);
-      } else {
-        document.getElementById('selector').scrollTop += 60;
       }
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (_romIndex > 0) {
         _updateSelection(_romIndex - 1);
-      } else {
-        document.getElementById('selector').scrollTop -= 60;
       }
+    }
+    // ← NEW: Left/Right arrows cycle categories
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      _cycleCategory(-1);
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      _cycleCategory(1);
     }
     if (e.key === 'Enter')     { e.preventDefault(); launchRom(_romIndex); }
     if (e.key === '0')         { e.preventDefault(); _currentRom = null; toggleKeybinds(); }
   }
 
   if (inEmu) {
-    if (e.key === 'Call') { 
-      e.preventDefault(); 
-      _currentSlot = (_currentSlot + 1) % MAX_SLOTS; 
-      _setSaveStatus(`SLOT ${_currentSlot}`, 'active'); 
+    if (e.key === 'Call') {
+      e.preventDefault();
+      _currentSlot = (_currentSlot + 1) % MAX_SLOTS;
+      _setSaveStatus(`SLOT ${_currentSlot}`, 'active');
       _clearSaveStatus(1500);
     }
 
