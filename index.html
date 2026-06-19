@@ -75,12 +75,12 @@
       <div class="logo">RETRO<span class="logo-accent">EMU</span></div>
     </div>
     <div class="header-right">
-      <button class="icon-btn" id="rom-refresh-btn" type="button" title="Refresh ROMs">
+      <button class="icon-btn" id="rom-refresh-btn" type="button" tabindex="0" title="Refresh ROMs">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
       </button>
       <div id="auth-user-bar" class="auth-user-bar" style="display:none">
         <span class="auth-user-name">—</span>
-        <button class="auth-sign-out" id="sign-out-btn">OUT</button>
+        <button class="auth-sign-out" id="sign-out-btn" tabindex="0">SIGN OUT</button>
       </div>
     </div>
   </div>
@@ -88,50 +88,54 @@
   <div class="category-bar" id="category-bar"></div>
 
   <div class="section-header">
-    <div class="section-label">SELECT ROM</div>
+    <div class="section-label" id="section-label">SELECT ROM</div>
   </div>
 
-  <div class="rom-list" id="rom-list"></div>
-
-  <div class="drive-setup-hint" id="drive-setup-hint" style="display:none">
-    <div class="hint-title">DRIVE SETUP</div>
-    <div class="hint-body">
-      Create this in your Google Drive:<br><br>
-      <code>cloudphone-emulator/</code><br>
-      <code>&nbsp;├─ gb/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gb</code><br>
-      <code>&nbsp;├─ gbc/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gbc</code><br>
-      <code>&nbsp;├─ gba/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gba</code><br>
-      <code>&nbsp;├─ nes/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.nes</code><br>
-      <code>&nbsp;├─ snes/&nbsp;&nbsp;&nbsp;&nbsp;.sfc / .smc</code><br>
-      <code>&nbsp;├─ psx/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.chd</code><br>
-      <code>&nbsp;├─ gg/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gg</code><br>
-      <code>&nbsp;├─ sms/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.sms</code><br>
-      <code>&nbsp;├─ genesis/&nbsp;.md / .bin</code><br>
-      <code>&nbsp;└─ bios/&nbsp;&nbsp;&nbsp;&nbsp;BIOS files</code>
+  <div class="rom-scroll-area">
+    <div class="rom-list" id="rom-list"></div>
+    <div class="drive-setup-hint" id="drive-setup-hint" style="display:none">
+      <div class="hint-title">DRIVE SETUP</div>
+      <div class="hint-body">
+        Create this in your Google Drive:<br><br>
+        <code>cloudphone-emulator/</code><br>
+        <code>&nbsp;├─ gb/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gb</code><br>
+        <code>&nbsp;├─ gbc/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gbc</code><br>
+        <code>&nbsp;├─ gba/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gba</code><br>
+        <code>&nbsp;├─ nes/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.nes</code><br>
+        <code>&nbsp;├─ snes/&nbsp;&nbsp;&nbsp;&nbsp;.sfc / .smc</code><br>
+        <code>&nbsp;├─ psx/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.chd</code><br>
+        <code>&nbsp;├─ gg/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gg</code><br>
+        <code>&nbsp;├─ sms/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.sms</code><br>
+        <code>&nbsp;├─ genesis/&nbsp;.md / .bin</code><br>
+        <code>&nbsp;└─ bios/&nbsp;&nbsp;&nbsp;&nbsp;BIOS files</code>
+      </div>
     </div>
   </div>
 
-  <div class="selector-footer">
-    <div class="selector-help-hint">press <span>0</span> controls</div>
-    <div class="selector-help-hint">press <span>ENTER</span> launch</div>
-    <div class="selector-help-hint"><span>←→</span> switch category</div>
-  </div>
-
-  <div class="keymap">
-    <div class="keymap-title">CONTROLS</div>
-    <div class="keymap-grid">
-      <div class="keymap-row"><span class="keymap-key">↑↓←→</span><span class="keymap-action">D-PAD</span></div>
-      <div class="keymap-row"><span class="keymap-key">ENTER</span><span class="keymap-action">A</span></div>
-      <div class="keymap-row"><span class="keymap-key">1</span><span class="keymap-action">B</span></div>
-      <div class="keymap-row"><span class="keymap-key">2</span><span class="keymap-action">Y</span></div>
-      <div class="keymap-row"><span class="keymap-key">4</span><span class="keymap-action">X</span></div>
-      <div class="keymap-row"><span class="keymap-key">ESC</span><span class="keymap-action">START</span></div>
-      <div class="keymap-row"><span class="keymap-key">3</span><span class="keymap-action">SELECT</span></div>
-      <div class="keymap-row"><span class="keymap-key">5</span><span class="keymap-action">L</span></div>
-      <div class="keymap-row"><span class="keymap-key">6</span><span class="keymap-action">R</span></div>
-      <div class="keymap-row"><span class="keymap-key">7</span><span class="keymap-action">LOAD STATE</span></div>
-      <div class="keymap-row"><span class="keymap-key">9</span><span class="keymap-action">SAVE STATE</span></div>
-      <div class="keymap-row"><span class="keymap-key">RSK</span><span class="keymap-action">EXIT</span></div>
+  <div class="selector-bottom">
+    <div class="selector-footer">
+      <div class="selector-help-hint"><span>↑↓</span> roms</div>
+      <div class="selector-help-hint"><span>←→</span> category</div>
+      <div class="selector-help-hint"><span>↑↑</span> buttons</div>
+      <div class="selector-help-hint"><span>ENTER</span> launch</div>
+      <div class="selector-help-hint"><span>0</span> controls</div>
+    </div>
+    <div class="keymap">
+      <div class="keymap-title">CONTROLS</div>
+      <div class="keymap-grid">
+        <div class="keymap-row"><span class="keymap-key">↑↓←→</span><span class="keymap-action">D-PAD</span></div>
+        <div class="keymap-row"><span class="keymap-key">ENTER</span><span class="keymap-action">A</span></div>
+        <div class="keymap-row"><span class="keymap-key">1</span><span class="keymap-action">B</span></div>
+        <div class="keymap-row"><span class="keymap-key">2</span><span class="keymap-action">Y</span></div>
+        <div class="keymap-row"><span class="keymap-key">4</span><span class="keymap-action">X</span></div>
+        <div class="keymap-row"><span class="keymap-key">ESC</span><span class="keymap-action">START</span></div>
+        <div class="keymap-row"><span class="keymap-key">3</span><span class="keymap-action">SELECT</span></div>
+        <div class="keymap-row"><span class="keymap-key">5</span><span class="keymap-action">L</span></div>
+        <div class="keymap-row"><span class="keymap-key">6</span><span class="keymap-action">R</span></div>
+        <div class="keymap-row"><span class="keymap-key">7</span><span class="keymap-action">LOAD STATE</span></div>
+        <div class="keymap-row"><span class="keymap-key">9</span><span class="keymap-action">SAVE STATE</span></div>
+        <div class="keymap-row"><span class="keymap-key">RSK</span><span class="keymap-action">EXIT</span></div>
+      </div>
     </div>
   </div>
 </div>

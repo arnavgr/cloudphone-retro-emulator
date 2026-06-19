@@ -19,7 +19,6 @@
   --text-mut:  #3a3a52;
   --gold:      #ffd700;
   --red:       #ff4757;
-  --accent:    #00ff41;
 
   --sys-gb:   #00ff41;
   --sys-gbc:  #7cfc00;
@@ -43,12 +42,10 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 3px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border-lt); border-radius: 3px; }
 
-/* ── Scanlines ── */
 #scanlines {
   position: fixed; inset: 0; pointer-events: none; z-index: 1;
   background: repeating-linear-gradient(
@@ -59,10 +56,6 @@ html, body {
 }
 
 #auth-screen, #selector, #emulator-screen { position: relative; z-index: 10; }
-
-button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
-  outline: 2px solid var(--green); outline-offset: 2px;
-}
 
 ::selection { background: var(--green); color: #000; }
 
@@ -85,7 +78,6 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
   100% { clip-path: inset(0 0 0 0); filter: brightness(1); }
 }
 
-/* Animated background orbs */
 .auth-bg-orb {
   position: absolute; border-radius: 50%; pointer-events: none;
   filter: blur(60px); opacity: 0.4;
@@ -175,6 +167,10 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
   background: rgba(0,255,65,0.06);
   box-shadow: 0 0 20px rgba(0,255,65,0.12), inset 0 0 20px rgba(0,255,65,0.04);
 }
+.auth-google-btn:focus {
+  outline: 2px solid var(--green); outline-offset: 2px;
+  background: rgba(0,255,65,0.06);
+}
 .auth-google-btn::after {
   content: ''; position: absolute; top: 0; left: -100%;
   width: 100%; height: 100%;
@@ -197,7 +193,6 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
 }
 .auth-drive-note span { color: var(--green); font-weight: 700; }
 
-/* System pills on auth screen */
 .auth-systems {
   display: flex; flex-wrap: wrap; gap: 4px;
   justify-content: center; margin-top: 18px;
@@ -210,7 +205,6 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
   color: var(--sc, #888); letter-spacing: 1px;
 }
 
-/* User bar */
 .auth-user-bar {
   display: flex; align-items: center; gap: 6px;
   background: var(--surface); border: 1px solid var(--border);
@@ -219,24 +213,28 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
 .auth-user-name {
   font-family: var(--font-pixel); font-size: 5px; color: var(--green);
   letter-spacing: 1px; flex: 1; overflow: hidden;
-  text-overflow: ellipsis; white-space: nowrap;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 80px;
 }
 .auth-sign-out {
-  color: var(--text-dim); background: none; border: none;
+  color: var(--text-dim); background: none; border: 1px solid transparent;
   font-family: var(--font-pixel); font-size: 5px; cursor: pointer;
-  letter-spacing: 1px; flex-shrink: 0; padding: 0;
-  transition: color 0.15s;
+  letter-spacing: 1px; flex-shrink: 0; padding: 2px 4px;
+  border-radius: 3px; transition: all 0.15s;
 }
-.auth-sign-out:hover { color: var(--red); }
+.auth-sign-out:hover { color: var(--red); border-color: var(--red); }
+.auth-sign-out:focus {
+  outline: 2px solid var(--green); outline-offset: 1px;
+  color: var(--red); border-color: var(--red);
+  background: rgba(255,71,87,0.08);
+}
 
 
 /* ══════════════════════════════════════════════════════════════
-   SELECTOR SCREEN
+   SELECTOR SCREEN — flex column, fixed bottom
    ══════════════════════════════════════════════════════════════ */
 #selector {
   display: none; flex-direction: column; align-items: center;
-  padding: 0 8px 60px; height: 100dvh; width: 100vw;
-  overflow-y: auto; overflow-x: hidden;
+  height: 100dvh; width: 100vw; overflow: hidden; padding: 0 6px;
   background:
     linear-gradient(180deg, #06060c 0%, #040408 100%),
     repeating-linear-gradient(0deg,   transparent, transparent 23px, rgba(0,255,65,0.012) 23px, rgba(0,255,65,0.012) 24px),
@@ -246,11 +244,12 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
 /* Header */
 .selector-header {
   width: 100%; display: flex; align-items: center;
-  justify-content: space-between; padding: 10px 0 6px;
-  border-bottom: 1px solid var(--border); margin-bottom: 6px;
+  justify-content: space-between; padding: 8px 2px 4px;
+  border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  flex-shrink: 0;
 }
 .header-left { display: flex; align-items: center; gap: 8px; }
-.header-right { display: flex; align-items: center; gap: 6px; }
+.header-right { display: flex; align-items: center; gap: 4px; }
 
 .logo {
   font-family: var(--font-pixel); font-size: 10px;
@@ -260,64 +259,86 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
 
 .icon-btn {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 6px; color: var(--text-dim); padding: 5px;
+  border-radius: 4px; color: var(--text-dim); padding: 4px 5px;
   cursor: pointer; display: flex; align-items: center;
   justify-content: center; transition: all 0.15s;
 }
 .icon-btn:hover { border-color: var(--green); color: var(--green); }
+.icon-btn:focus {
+  outline: 2px solid var(--green); outline-offset: 1px;
+  border-color: var(--green); color: var(--green);
+  background: rgba(0,255,65,0.06);
+}
 .icon-btn svg { display: block; }
+
 
 /* ── Category Bar ── */
 .category-bar {
-  width: 100%; display: flex; gap: 5px;
-  overflow-x: auto; padding: 6px 0 8px;
+  width: 100%; display: flex; gap: 3px;
+  overflow-x: auto; padding: 4px 0 6px;
   scrollbar-width: none; -ms-overflow-style: none;
+  flex-shrink: 0;
 }
 .category-bar::-webkit-scrollbar { display: none; }
 
 .cat-btn {
-  flex-shrink: 0; padding: 5px 9px;
-  border: 1px solid var(--border); border-radius: 14px;
+  flex-shrink: 0; padding: 3px 5px;
+  border: 1px solid var(--border); border-radius: 8px;
   background: var(--surface); color: var(--text-dim);
-  font-family: var(--font-pixel); font-size: 6px;
-  letter-spacing: 1px; cursor: pointer;
-  transition: all 0.2s ease; text-transform: uppercase;
-  white-space: nowrap; display: flex; align-items: center; gap: 3px;
+  font-family: var(--font-mono); font-size: 8px;
+  font-weight: 700; letter-spacing: 0.5px; cursor: pointer;
+  transition: all 0.15s ease; text-transform: uppercase;
+  white-space: nowrap; display: flex; align-items: center; gap: 2px;
 }
 .cat-btn:hover {
   border-color: var(--border-lt); color: var(--text);
   background: var(--surface-2);
 }
+.cat-btn:focus {
+  outline: 2px solid var(--green); outline-offset: 1px;
+  background: var(--surface-2); color: var(--text);
+}
 .cat-btn.active {
   background: var(--cat-color, var(--green));
   color: #000; border-color: var(--cat-color, var(--green));
   font-weight: bold;
-  box-shadow: 0 0 14px color-mix(in srgb, var(--cat-color, var(--green)) 30%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--cat-color, var(--green)) 25%, transparent);
 }
 .cat-count {
   font-family: var(--font-mono); font-size: 7px;
-  opacity: 0.6; font-weight: 400;
+  opacity: 0.5; font-weight: 400;
 }
-.cat-btn.active .cat-count { opacity: 0.7; }
+.cat-btn.active .cat-count { opacity: 0.6; }
+
 
 /* Section header */
 .section-header {
   width: 100%; display: flex; align-items: center;
-  justify-content: space-between; margin-bottom: 6px;
+  justify-content: space-between; margin-bottom: 4px;
+  flex-shrink: 0;
 }
 .section-label {
   font-family: var(--font-pixel); font-size: 6px;
   letter-spacing: 2px; color: var(--text-dim); text-transform: uppercase;
 }
 
+
+/* ── ROM Scroll Area — takes remaining space ── */
+.rom-scroll-area {
+  flex: 1; min-height: 0; width: 100%;
+  overflow-y: auto; overflow-x: hidden;
+  margin-bottom: 4px;
+  scrollbar-width: thin;
+}
+
 /* ── ROM List ── */
 .rom-list {
   width: 100%; display: flex; flex-direction: column;
-  gap: 4px; margin-bottom: 10px;
+  gap: 3px;
 }
 
 .rom-list-msg {
-  text-align: center; padding: 24px 12px;
+  text-align: center; padding: 20px 8px;
   color: var(--text-dim); font-size: 8px;
   letter-spacing: 1px; line-height: 2;
 }
@@ -326,35 +347,43 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
   width: 100%; background: var(--surface);
   border: 1px solid var(--border);
   border-left: 3px solid var(--sys-color, var(--border-lt));
-  border-radius: 5px; color: var(--text);
+  border-radius: 4px; color: var(--text);
   font-family: var(--font-mono); font-size: 11px;
-  padding: 10px 10px; text-align: left; cursor: pointer;
-  display: flex; align-items: center; gap: 8px;
-  transition: all 0.12s ease; position: relative;
-  animation: romFadeIn 0.2s ease both;
+  padding: 8px 8px; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  transition: all 0.1s ease; position: relative;
+  animation: romFadeIn 0.15s ease both;
   animation-delay: var(--rom-delay, 0ms);
 }
 @keyframes romFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(3px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 .rom-item::before {
-  content: '▶'; font-size: 7px; color: var(--text-mut);
-  flex-shrink: 0; transition: all 0.12s;
+  content: '▶'; font-size: 6px; color: var(--text-mut);
+  flex-shrink: 0; transition: all 0.1s;
 }
 .rom-item:hover {
   background: var(--surface-2);
   border-color: var(--border-lt);
   border-left-color: var(--sys-color, var(--border-lt));
 }
+.rom-item:focus {
+  outline: 2px solid var(--green); outline-offset: 1px;
+  border-color: var(--green);
+  border-left-color: var(--green);
+  background: rgba(0,255,65,0.05);
+  box-shadow: 0 0 12px rgba(0,255,65,0.08);
+}
 .rom-item.selected {
   border-color: var(--green);
   border-left-color: var(--green);
   background: rgba(0,255,65,0.05);
-  box-shadow: 0 0 16px rgba(0,255,65,0.08), inset 0 0 16px rgba(0,255,65,0.02);
+  box-shadow: 0 0 12px rgba(0,255,65,0.08);
 }
-.rom-item.selected::before { color: var(--green); }
+.rom-item.selected::before,
+.rom-item:focus::before { color: var(--green); }
 
 .rom-name {
   flex: 1; white-space: nowrap; overflow: hidden;
@@ -362,10 +391,10 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
 }
 
 .rom-badge {
-  font-family: var(--font-pixel); font-size: 5px;
-  letter-spacing: 1px; padding: 2px 5px;
-  border-radius: 3px; flex-shrink: 0;
-  text-transform: uppercase; font-weight: bold;
+  font-family: var(--font-mono); font-size: 7px;
+  letter-spacing: 0.5px; padding: 1px 4px;
+  border-radius: 2px; flex-shrink: 0;
+  text-transform: uppercase; font-weight: 700;
 }
 .rom-badge.gb   { background: rgba(0,255,65,0.12);   color: var(--sys-gb);   }
 .rom-badge.gbc  { background: rgba(124,252,0,0.12);   color: var(--sys-gbc);  }
@@ -377,21 +406,31 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
 .rom-badge.sms  { background: rgba(248,113,113,0.12); color: var(--sys-sms);  }
 .rom-badge.gen  { background: rgba(232,121,249,0.12); color: var(--sys-gen);  }
 
-/* Selector footer */
+
+/* ── Selector Bottom — always visible ── */
+.selector-bottom {
+  flex-shrink: 0; width: 100%;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
 .selector-footer {
-  width: 100%; display: flex; gap: 10px; flex-wrap: wrap;
-  justify-content: center; margin-bottom: 10px;
+  width: 100%; display: flex; gap: 6px; flex-wrap: wrap;
+  justify-content: center; margin-bottom: 4px; padding: 0 2px;
 }
 .selector-help-hint {
-  font-size: 7px; color: var(--text-mut); letter-spacing: 1px;
+  font-size: 6px; color: var(--text-mut); letter-spacing: 0.5px;
+  font-family: var(--font-mono);
 }
 .selector-help-hint span { color: var(--gold); font-weight: 700; }
+
 
 /* ── Drive Setup Hint ── */
 .drive-setup-hint {
   width: 100%; background: var(--surface);
   border: 1px solid var(--border); border-radius: 6px;
-  padding: 12px; margin-bottom: 12px; position: relative; overflow: hidden;
+  padding: 10px; margin-top: 4px; position: relative; overflow: hidden;
 }
 .drive-setup-hint::before {
   content: ''; position: absolute; top: 0; left: 0; right: 0;
@@ -401,19 +440,19 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
 }
 .hint-title {
   font-family: var(--font-pixel); font-size: 7px;
-  color: var(--gold); letter-spacing: 2px; margin-bottom: 8px;
+  color: var(--gold); letter-spacing: 2px; margin-bottom: 6px;
 }
 .hint-body {
-  font-size: 8px; line-height: 2; color: var(--text-dim); letter-spacing: 0.5px;
+  font-size: 7px; line-height: 1.9; color: var(--text-dim); letter-spacing: 0.5px;
 }
 .hint-body code { color: var(--green); font-weight: 700; }
+
 
 /* ── Keymap ── */
 .keymap {
   width: 100%; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 10px 12px; margin-bottom: 8px;
-  position: relative; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px 8px; position: relative; overflow: hidden;
 }
 .keymap::before {
   content: ''; position: absolute; top: 0; left: 0; right: 0;
@@ -421,15 +460,15 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
   background: linear-gradient(90deg, transparent, var(--border-lt), transparent);
 }
 .keymap-title {
-  font-family: var(--font-pixel); font-size: 6px;
+  font-family: var(--font-pixel); font-size: 5px;
   letter-spacing: 2px; color: var(--text-dim);
-  text-transform: uppercase; margin-bottom: 8px;
+  text-transform: uppercase; margin-bottom: 4px;
 }
 .keymap-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px;
 }
 .keymap-row {
-  display: flex; justify-content: space-between; font-size: 9px;
+  display: flex; justify-content: space-between; font-size: 8px;
   padding: 1px 0;
 }
 .keymap-key { color: var(--green); font-weight: 700; }
@@ -476,7 +515,6 @@ button:focus, .rom-item:focus, .auth-google-btn:focus, .cat-btn:focus {
   display: block; image-rendering: pixelated; object-fit: contain;
 }
 
-/* Hide EJS chrome */
 #emulator-wrapper .ejs_menu_bar, #emulator-wrapper .ejs_top_bar,
 #emulator-wrapper .ejs_virtualGamepad, #emulator-wrapper .ejs_virtualpad,
 #emulator-wrapper .ejs_controls, #emulator-wrapper .ejs_menu,
@@ -585,7 +623,6 @@ body.landscape #keybinds-overlay {
   box-shadow: 0 0 40px rgba(255,71,87,0.15);
 }
 #save-confirm.visible { display: flex; }
-/* Dark backdrop */
 #save-confirm.visible::before {
   content: ''; position: fixed; inset: 0;
   background: rgba(0,0,0,0.75); z-index: -1; border-radius: 0;
