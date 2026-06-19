@@ -474,21 +474,53 @@ function _initFocusSync() {
 // ══════════════════════════════════════════════════════════════
 // FULL EMULATORJS CLEANUP
 // ══════════════════════════════════════════════════════════════
-// This is the KEY fix for the "ROM doesn't load after exit" bug.
+// This is the KEY fix for the "2nd rom downloads but never starts" bug.
 //
-// Root cause: EmulatorJS's loader.js defines window.EJS (the main
-// constructor) on first load. On second load, if window.EJS still
-// exists, loader.js skips re-initialization — no emulator is created,
-// no core loads, and the screen stays blank.
+// Root cause (confirmed against EmulatorJS's actual source): loader.js
+// itself has NO check that skips re-initialization — it always creates a
+// fresh `new EmulatorJS(...)` instance. The real problem is that the
+// PREVIOUS instance was never properly shut down. EmulatorJS's GameManager
+// mounts its save data in an IndexedDB-backed filesystem (IDBFS) on
+// "/data/saves" and only unmounts/releases that connection when its
+// internal "exit" event fires (this is exactly what EmulatorJS's own
+// built-in Exit button triggers). We were never firing it, so:
+//   - the old core's WASM main loop kept running in the background
+//   - the old IndexedDB connection for /data/saves was never closed
+// The next rom's GameManager then tries to open that same IndexedDB
+// database and gets queued behind the still-open old connection — which
+// never closes — so it hangs forever with no error, right after the ROM
+// itself finishes downloading.
 //
-// Additionally, EmulatorJS dynamically loads core scripts (e.g.
-// gambatte.js, mgba.js) from cdn.emulatorjs.org. These don't have
-// the 'ejs-script' class, so they persist and cause stale state.
-//
-// This function purges ALL of that so loader.js starts fresh.
+// We also still scrub EJS_* globals and remove old script tags as good
+// hygiene (loader.js reads these fresh each run anyway since we reassign
+// them before every boot, but stale callbacks like EJS_onGameStart
+// shouldn't be left dangling).
 // ══════════════════════════════════════════════════════════════
 function _fullEJSCleanup() {
-  // 1. Try to stop and destroy the emulator instance
+  // 1. Properly shut down the running core.
+  //    NOTE: EmulatorJS has no destroy()/gameManager.pause() method — those
+  //    calls below were silent no-ops. The real teardown path (what EJS's
+  //    own built-in "Exit" button uses internally) is firing the "exit"
+  //    event. GameManager listens for it and:
+  //      - stops the WASM core's main loop (toggleMainLoop(0))
+  //      - unmounts the IndexedDB-backed save filesystem (/data/saves)
+  //      - aborts the Module
+  //    Without this, the previous core keeps running in the background and
+  //    — critically — keeps its IndexedDB connection for /data/saves open.
+  //    The NEXT rom's GameManager tries to open that same IndexedDB database
+  //    on mount and gets queued behind the still-open old connection, which
+  //    never closes. That's why a second rom downloads fine but then hangs
+  //    forever with no error: it's stuck waiting on a DB handle that the
+  //    previous (never-exited) instance is still holding.
+  try {
+    if (window.EJS_emulator && typeof window.EJS_emulator.callEvent === 'function') {
+      window.EJS_emulator.callEvent('exit');
+      dbg('EJS exit event fired (proper core/IDBFS teardown)');
+    }
+  } catch (e) { dbg('EJS exit event ERR: ' + e.message); }
+
+  // Legacy best-effort calls kept as a harmless fallback in case a future
+  // EmulatorJS version adds real destroy()/pause() methods.
   try {
     if (window.EJS_emulator) {
       try { window.EJS_emulator.gameManager?.pause(); } catch (e) {}
@@ -496,10 +528,9 @@ function _fullEJSCleanup() {
     }
   } catch (e) {}
 
-  // 2. Delete ALL EJS-related globals
-  //    window.EJS is the critical one — it's the constructor that
-  //    loader.js checks before initializing. Without deleting it,
-  //    the second launch silently fails.
+  // 2. Delete ALL EJS-related globals (good hygiene — these get
+  //    reassigned fresh before every boot anyway, but this avoids
+  //    leaving stale callbacks/config lying around between sessions)
   const ejsKeys = [];
   try {
     for (const key of Object.keys(window)) {
