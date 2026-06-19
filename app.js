@@ -472,98 +472,6 @@ function _initFocusSync() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// FULL EMULATORJS CLEANUP
-// ══════════════════════════════════════════════════════════════
-// CRITICAL: window.EJS is the constructor that loader.js's IIFE
-// checks before re-initializing. If it's not deleted, loader.js
-// silently returns and no emulator is ever created.
-//
-// Object.keys(window) can MISS non-enumerable properties, so we
-// delete the critical keys EXPLICITLY first, then scan for stragglers.
-// ══════════════════════════════════════════════════════════════
-function _fullEJSCleanup() {
-  dbg('EJS cleanup: starting');
-
-  // 1. Stop and destroy the emulator instance
-  try {
-    if (window.EJS_emulator) {
-      try { window.EJS_emulator.gameManager?.pause(); } catch (e) {}
-      try { if (typeof window.EJS_emulator.destroy === 'function') window.EJS_emulator.destroy(); } catch (e) {}
-    }
-  } catch (e) {}
-
-  // 2. Delete ALL EJS globals — explicit deletes FIRST
-  //    These are the ones most likely to be non-enumerable
-  //    or to cause the "loader.js skips" bug if they survive.
-  const critical = [
-    'EJS', 'EJS_emulator', 'EJS_player', 'EJS_gameName', 'EJS_gameUrl',
-    'EJS_core', 'EJS_pathtodata', 'EJS_startOnLoaded', 'EJS_muted',
-    'EJS_color', 'EJS_backgroundColor', 'EJS_canvasWidth', 'EJS_canvasHeight',
-    'EJS_disableDatabases', 'EJS_core_options', 'EJS_Buttons',
-    'EJS_defaultControls', 'EJS_onGameStart', 'EJS_onSaveState',
-    'EJS_onLoadState', 'EJS_loadStateURL', 'EJS_biosUrl', 'EJS_bios2Url',
-    'EJS_bios3Url', 'EJS_gameID', 'EJS_language', 'EJS_volume',
-    'EJS_fullscreenOnLoad', 'EJS_controlScheme',
-  ];
-  for (const k of critical) {
-    try { delete window[k]; } catch (e) {}
-  }
-
-  // Scan for any other EJS globals the explicit list missed
-  try {
-    for (const key of Object.keys(window)) {
-      if (key.startsWith('EJS')) {
-        try { delete window[key]; } catch (e) {}
-      }
-    }
-  } catch (e) {}
-
-  // Verify the most critical deletion succeeded
-  if (window.EJS) {
-    dbg('EJS cleanup: WARNING — window.EJS still exists! Type: ' + typeof window.EJS);
-    // Force it as a last resort
-    try { window.EJS = undefined; } catch (e) {}
-    try { delete window.EJS; } catch (e) {}
-  }
-  dbg('EJS cleanup: window.EJS deleted = ' + (typeof window.EJS === 'undefined'));
-
-  // 3. Remove ALL EmulatorJS scripts from the DOM
-  //    This catches both loader.js AND dynamically loaded core scripts
-  //    (gambatte.js, mgba.js, etc.) which don't have the .ejs-script class
-  const removed = document.querySelectorAll('script[src*="emulatorjs.org"]');
-  removed.forEach(s => s.remove());
-  document.querySelectorAll('.ejs-script').forEach(s => s.remove());
-  dbg('EJS cleanup: removed ' + removed.length + ' EJS scripts');
-
-  // 4. Clean the wrapper DOM completely
-  const wrapper = document.getElementById('emulator-wrapper');
-  if (wrapper) wrapper.innerHTML = '';
-
-  // 5. Clean up stale state blob
-  if (window._lastStateBlobUrl) {
-    URL.revokeObjectURL(window._lastStateBlobUrl);
-    window._lastStateBlobUrl = null;
-  }
-}
-
-// Recreate the loading message element inside the wrapper.
-// EmulatorJS replaces wrapper contents during gameplay, so this
-// div is often destroyed and needs to be rebuilt for the next launch.
-function _ensureLoadingMsg() {
-  let loadMsg = document.getElementById('loading-msg');
-  if (!loadMsg) {
-    const wrapper = document.getElementById('emulator-wrapper');
-    if (!wrapper) return null;
-    loadMsg = document.createElement('div');
-    loadMsg.id = 'loading-msg';
-    wrapper.appendChild(loadMsg);
-  }
-  loadMsg.innerHTML = '<div class="loading-spinner"></div><span>LOADING<span class="loading-dot">_</span></span>';
-  loadMsg.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000;color:#00ff41;font-family:"Press Start 2P",monospace;font-size:8px;letter-spacing:2px;flex-direction:column;gap:14px;z-index:10;text-align:center;padding:16px;';
-  return loadMsg;
-}
-
-// ══════════════════════════════════════════════════════════════
 // UI HELPERS
 // ══════════════════════════════════════════════════════════════
 function _setSaveStatus(text, cls) { const el = document.getElementById('save-status'); if (!el) return; el.textContent = text; el.className = 'save-status' + (cls ? ' ' + cls : ''); }
@@ -593,6 +501,23 @@ function _renderPortraitHints() {
   el.innerHTML = [['7','LOAD'],['9','SAVE'],['0','HELP'],['RSK','EXIT']].map(([k,a]) =>
     `<div class="hint-row"><span class="hint-key">${k}</span><span class="hint-action">${a}</span></div>`
   ).join('');
+}
+
+// Recreate the loading message inside the wrapper.
+// EmulatorJS replaces wrapper contents during gameplay, so this
+// div is destroyed and needs rebuilding before each launch.
+function _ensureLoadingMsg() {
+  let loadMsg = document.getElementById('loading-msg');
+  if (!loadMsg) {
+    const wrapper = document.getElementById('emulator-wrapper');
+    if (!wrapper) return null;
+    loadMsg = document.createElement('div');
+    loadMsg.id = 'loading-msg';
+    wrapper.appendChild(loadMsg);
+  }
+  loadMsg.innerHTML = '<div class="loading-spinner"></div><span>LOADING<span class="loading-dot">_</span></span>';
+  loadMsg.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000;color:#00ff41;font-family:"Press Start 2P",monospace;font-size:8px;letter-spacing:2px;flex-direction:column;gap:14px;z-index:10;text-align:center;padding:16px;';
+  return loadMsg;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -666,17 +591,34 @@ async function manualLoad() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// EXIT
+// EXIT — just destroy the instance, keep window.EJS class alive
 // ══════════════════════════════════════════════════════════════
 function exitRom() {
   _dismissSaveConfirm();
   document.getElementById('keybinds-overlay')?.classList.remove('visible');
 
-  _fullEJSCleanup();
-  _ensureLoadingMsg();
+  // Stop the emulator
+  if (window.EJS_emulator) {
+    try { window.EJS_emulator.gameManager?.pause(); } catch (e) {}
+  }
+  delete window.EJS_emulator;
 
+  // Clear wrapper DOM (removes canvas, EJS UI, loading msg)
+  const wrapper = document.getElementById('emulator-wrapper');
+  if (wrapper) wrapper.innerHTML = '';
+
+  // IMPORTANT: Do NOT delete window.EJS — the class definition must
+  // survive so we can call `new EJS(element, config)` on the next launch.
+  // Do NOT remove EJS scripts — they're cached and the class lives in them.
+
+  // Revoke ROM blob URLs
   for (const url of Object.values(_cache.romBlobs)) URL.revokeObjectURL(url);
   _cache.romBlobs = {};
+
+  if (window._lastStateBlobUrl) {
+    URL.revokeObjectURL(window._lastStateBlobUrl);
+    window._lastStateBlobUrl = null;
+  }
 
   setLandscape(false);
   _currentRom = null;
@@ -726,43 +668,50 @@ async function launchRom(index) {
 
 // ══════════════════════════════════════════════════════════════
 // EMULATORJS BOOT
+//
+// Two paths:
+//   1) First launch: window.EJS doesn't exist yet.
+//      → Set globals, load loader.js (which defines window.EJS
+//        and auto-starts via the globals).
+//
+//   2) Subsequent launches: window.EJS is already defined.
+//      → Call `new EJS(element, config)` directly with a config
+//        object. This is the "Advanced Usage" pattern from the
+//        EmulatorJS v4 docs. No need to reload loader.js.
+//
+// This avoids the entire "loader.js IIFE won't re-run" problem
+// because we never try to re-load it.
 // ══════════════════════════════════════════════════════════════
 async function _bootEJS(rom, romUrl) {
-  dbg('_bootEJS: starting for "' + rom.name + '" core=' + rom.core);
+  dbg('_bootEJS: "' + rom.name + '" core=' + rom.core + ' EJS=' + typeof window.EJS);
 
-  // Full cleanup of any previous EmulatorJS state.
-  _fullEJSCleanup();
+  // Stop and discard any previous emulator instance
+  if (window.EJS_emulator) {
+    try { window.EJS_emulator.gameManager?.pause(); } catch (e) {}
+  }
+  delete window.EJS_emulator;
 
-  // Recreate the loading message in the now-empty wrapper
+  // Clear the wrapper (removes old canvas, EJS chrome)
+  const wrapper = document.getElementById('emulator-wrapper');
+  if (wrapper) wrapper.innerHTML = '';
+
+  // Re-add the loading message
   const loadMsg = _ensureLoadingMsg();
   if (loadMsg) loadMsg.style.display = 'flex';
 
-  // Set EJS configuration globals — these are read by the
-  // auto-start code inside loader.js AND by the EJS constructor.
-  window.EJS_player          = '#emulator-wrapper';
-  window.EJS_gameName        = rom.file;
-  window.EJS_gameUrl         = romUrl;
-  window.EJS_core            = rom.core;
+  // Set globals that the EJS class reads internally
+  // (these are custom hacks not part of the config object)
   window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/';
-  window.EJS_startOnLoaded   = true;
-  window.EJS_muted           = true;
-  window.EJS_color           = '#00ff41';
-  window.EJS_backgroundColor = '#000000';
   window.EJS_canvasWidth     = _isLandscape ? SCREEN.h : SCREEN.w;
   window.EJS_canvasHeight    = _isLandscape ? SCREEN.w : SCREEN.h;
   window.EJS_disableDatabases = true;
-  window.EJS_core_options     = { video_filter: 'none' };
-  window.EJS_Buttons = {
-    playPause: false, restart: false, mute: false, settings: false,
-    fullscreen: false, saveState: false, loadState: false,
-    screenRecord: false, gamepad: false, cheat: false, volume: false,
-    saveSavFiles: false, loadSavFiles: false, quickSave: false, quickLoad: false,
-  };
-  window.EJS_defaultControls = { 0: getControls(rom.core, rom.landscape), 1: {}, 2: {}, 3: {} };
+  window.EJS_core_options    = { video_filter: 'none' };
 
+  // Load BIOS if needed (sets window.EJS_biosUrl)
   await _loadBios(rom.core);
 
-  window.EJS_onGameStart = () => {
+  // Shared callback for when the game starts playing
+  const onGameStart = () => {
     const loadingMsg = document.getElementById('loading-msg');
     if (loadingMsg) loadingMsg.style.display = 'none';
     _setSaveStatus('NEW GAME', 'active');
@@ -776,64 +725,73 @@ async function _bootEJS(rom, romUrl) {
     }, 100);
   };
 
-  dbg('_bootEJS: config set, appending loader.js — window.EJS=' + typeof window.EJS);
+  // The EJS_Buttons config — same for both paths
+  const buttons = {
+    playPause: false, restart: false, mute: false, settings: false,
+    fullscreen: false, saveState: false, loadState: false,
+    screenRecord: false, gamepad: false, cheat: false, volume: false,
+    saveSavFiles: false, loadSavFiles: false, quickSave: false, quickLoad: false,
+  };
 
-  // Load the EmulatorJS loader script.
-  // The onload fallback is the safety net: if loader.js's IIFE
-  // didn't auto-start (e.g. because window.EJS survived deletion
-  // somehow), we create an EJS instance directly using the constructor.
-  const script = document.createElement('script');
-  script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
-  script.className = 'ejs-script';
+  // The defaultControls config — same for both paths
+  const defaultControls = { 0: getControls(rom.core, rom.landscape), 1: {}, 2: {}, 3: {} };
 
-  script.onload = () => {
-    const ejsType = typeof window.EJS;
-    const hasEmu = !!window.EJS_emulator;
-    dbg('loader.js onload — EJS type: ' + ejsType + ', EJS_emulator: ' + hasEmu);
+  if (typeof window.EJS === 'function') {
+    // ── Subsequent launches: use the constructor directly ──
+    dbg('_bootEJS: calling new EJS(element, config)');
 
-    if (ejsType === 'function' && !hasEmu) {
-      // loader.js re-defined the constructor but auto-start didn't fire.
-      // Create an instance manually using the config globals we set above.
-      dbg('Auto-start missed — creating EJS instance manually');
-      try {
-        const playerEl = document.querySelector('#emulator-wrapper');
-        if (playerEl) {
-          new window.EJS(playerEl);
-          dbg('Manual EJS instance created');
-        } else {
-          dbg('Fallback ERR: #emulator-wrapper not found in DOM');
-        }
-      } catch (e) {
-        dbg('Manual EJS instantiation ERR: ' + e.message);
-      }
-    } else if (ejsType !== 'function' && !hasEmu) {
-      // loader.js didn't even re-define window.EJS — script may not
-      // have executed. Retry with a cache-busting parameter.
-      dbg('loader.js did not define window.EJS — retrying with cache-bust');
-      const retry = document.createElement('script');
-      retry.src = 'https://cdn.emulatorjs.org/stable/data/loader.js?_=' + Date.now();
-      retry.className = 'ejs-script';
-      retry.onload = () => {
-        dbg('Cache-bust loader loaded — EJS type: ' + typeof window.EJS);
-        if (typeof window.EJS === 'function' && !window.EJS_emulator) {
-          try {
-            const playerEl = document.querySelector('#emulator-wrapper');
-            if (playerEl) new window.EJS(playerEl);
-          } catch (e) { dbg('Cache-bust manual instance ERR: ' + e.message); }
-        }
-      };
-      document.body.appendChild(retry);
+    const playerEl = document.getElementById('emulator-wrapper');
+    if (!playerEl) { dbg('ERROR: #emulator-wrapper not found'); return; }
+
+    const config = {
+      gameUrl: romUrl,
+      core: rom.core,
+      gameName: rom.file,
+      startOnLoad: true,
+      muted: true,
+      color: '#00ff41',
+      backgroundColor: '#000000',
+      defaultControls: defaultControls,
+      buttons: buttons,
+      onGameStart: onGameStart,
+    };
+
+    // Pass BIOS URL if loaded
+    if (window.EJS_biosUrl) config.biosUrl = window.EJS_biosUrl;
+
+    try {
+      new window.EJS(playerEl, config);
+      dbg('EJS instance created via constructor');
+    } catch (e) {
+      dbg('EJS constructor ERR: ' + e.message);
     }
-    // If EJS_emulator exists, auto-start worked — nothing to do.
-  };
 
-  script.onerror = () => {
-    dbg('EJS loader.js load FAILED');
-    const loadingMsg = document.getElementById('loading-msg');
-    if (loadingMsg) loadingMsg.innerHTML = 'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
-  };
+  } else {
+    // ── First launch: set globals, load loader.js ──
+    dbg('_bootEJS: loading loader.js (first launch)');
 
-  document.body.appendChild(script);
+    window.EJS_player          = '#emulator-wrapper';
+    window.EJS_gameUrl         = romUrl;
+    window.EJS_gameName        = rom.file;
+    window.EJS_core            = rom.core;
+    window.EJS_startOnLoaded   = true;
+    window.EJS_muted           = true;
+    window.EJS_color           = '#00ff41';
+    window.EJS_backgroundColor = '#000000';
+    window.EJS_onGameStart     = onGameStart;
+    window.EJS_defaultControls = defaultControls;
+    window.EJS_Buttons         = buttons;
+
+    const script = document.createElement('script');
+    script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
+    script.className = 'ejs-script';
+    script.onerror = () => {
+      dbg('EJS loader.js load FAILED');
+      const loadingMsg = document.getElementById('loading-msg');
+      if (loadingMsg) loadingMsg.innerHTML = 'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
+    };
+    document.body.appendChild(script);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
