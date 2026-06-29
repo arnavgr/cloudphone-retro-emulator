@@ -407,20 +407,20 @@ html, body {
 .rom-badge.gen  { background: rgba(232,121,249,0.12); color: var(--sys-gen);  }
 
 
-/* ── Selector Bottom ── */
+/* ── Selector Bottom (enlarged hints) ── */
 .selector-bottom {
   flex-shrink: 0; width: 100%;
-  padding-top: 4px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
   background: var(--bg);
 }
 
 .selector-footer {
-  width: 100%; display: flex; gap: 6px; flex-wrap: wrap;
-  justify-content: center; margin-bottom: 4px; padding: 0 2px;
+  width: 100%; display: flex; gap: 10px; flex-wrap: wrap;
+  justify-content: center; margin-bottom: 6px; padding: 2px 4px;
 }
 .selector-help-hint {
-  font-size: 6px; color: var(--text-mut); letter-spacing: 0.5px;
+  font-size: 9px; color: var(--text-dim); letter-spacing: 0.5px;
   font-family: var(--font-mono);
 }
 .selector-help-hint span { color: var(--gold); font-weight: 700; }
@@ -445,32 +445,6 @@ html, body {
   font-size: 7px; line-height: 1.9; color: var(--text-dim); letter-spacing: 0.5px;
 }
 .hint-body code { color: var(--green); font-weight: 700; }
-
-
-.keymap {
-  width: 100%; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 4px;
-  padding: 6px 8px; position: relative; overflow: hidden;
-}
-.keymap::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border-lt), transparent);
-}
-.keymap-title {
-  font-family: var(--font-pixel); font-size: 5px;
-  letter-spacing: 2px; color: var(--text-dim);
-  text-transform: uppercase; margin-bottom: 4px;
-}
-.keymap-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px;
-}
-.keymap-row {
-  display: flex; justify-content: space-between; font-size: 8px;
-  padding: 1px 0;
-}
-.keymap-key { color: var(--green); font-weight: 700; }
-.keymap-action { color: var(--text-dim); }
 
 
 /* ══════════════════════════════════════════════════════════════
