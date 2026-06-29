@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Retro Emu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
@@ -13,112 +16,117 @@
 
 <!-- ── AUTH ── -->
 <div id="auth-screen">
-  <div class="auth-logo">RETRO EMU</div>
-  <div class="auth-sub">CLOUDPHONE EDITION</div>
+  <div class="auth-bg-orb auth-orb-1"></div>
+  <div class="auth-bg-orb auth-orb-2"></div>
 
-  <svg width="48" height="48" viewBox="0 0 16 16" style="margin-bottom:20px;image-rendering:pixelated" xmlns="http://www.w3.org/2000/svg">
-    <rect width="16" height="16" fill="#111"/>
-    <rect x="2" y="1" width="12" height="14" rx="2" fill="#222" stroke="#00ff41" stroke-width="0.5"/>
-    <rect x="4" y="2" width="8" height="6" fill="#001a00" stroke="#007a1f" stroke-width="0.3"/>
-    <rect x="4" y="2" width="8" height="6" fill="rgba(0,255,65,0.08)"/>
-    <rect x="3" y="10" width="2" height="4" fill="#00ff41"/>
-    <rect x="2" y="11" width="4" height="2" fill="#00ff41"/>
-    <circle cx="12" cy="11" r="1" fill="#007a1f"/>
-    <circle cx="10" cy="12" r="1" fill="#007a1f"/>
-    <rect x="6" y="14" width="2" height="1" fill="#333"/>
-    <rect x="9" y="14" width="2" height="1" fill="#333"/>
-  </svg>
+  <div class="auth-content">
+    <div class="auth-logo">RETRO<span class="logo-accent">EMU</span></div>
+    <div class="auth-sub">CLOUDPHONE EDITION</div>
 
-  <div class="auth-card">
-    <div class="auth-label">Sign in to access your ROMs &amp; saves</div>
-    <button class="auth-google-btn" id="google-login-btn" type="button" tabindex="0">
-      <svg width="14" height="14" viewBox="0 0 24 24">
-        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-      </svg>
-      SIGN IN WITH GOOGLE
-    </button>
-    <div class="auth-status" id="auth-status">Your saves are tied to your Google account</div>
-    <div class="auth-drive-note">
-      Sign-in will request access to your <span>Google Drive</span>
-      to read ROMs and store saves. ROMs never leave your Drive.
+    <svg class="auth-icon" width="56" height="56" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <rect width="16" height="16" rx="2" fill="#0c0c14"/>
+      <rect x="2" y="1" width="12" height="14" rx="2" fill="#12121c" stroke="#00ff41" stroke-width="0.5"/>
+      <rect x="4" y="2" width="8" height="6" fill="#001a00" stroke="#007a1f" stroke-width="0.3"/>
+      <rect x="4" y="2" width="8" height="6" fill="rgba(0,255,65,0.06)"/>
+      <rect x="3" y="10" width="2" height="4" fill="#00ff41"/>
+      <rect x="2" y="11" width="4" height="2" fill="#00ff41"/>
+      <circle cx="12" cy="11" r="1" fill="#007a1f"/>
+      <circle cx="10" cy="12" r="1" fill="#007a1f"/>
+      <rect x="6" y="14" width="2" height="1" fill="#2a2a3a"/>
+      <rect x="9" y="14" width="2" height="1" fill="#2a2a3a"/>
+    </svg>
+
+    <div class="auth-card">
+      <div class="auth-label">Sign in to access your ROMs &amp; saves</div>
+      <button class="auth-google-btn" id="google-login-btn" type="button" tabindex="0">
+        <svg width="14" height="14" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        SIGN IN WITH GOOGLE
+      </button>
+      <div class="auth-status" id="auth-status">Your saves are tied to your Google account</div>
+      <div class="auth-drive-note">
+        Sign-in will request access to your <span>Google Drive</span>
+        to read ROMs and store saves. ROMs never leave your Drive.
+      </div>
+    </div>
+
+    <div class="auth-systems">
+      <span class="auth-sys-pill" style="--sc:#00ff41">GB</span>
+      <span class="auth-sys-pill" style="--sc:#7cfc00">GBC</span>
+      <span class="auth-sys-pill" style="--sc:#ffd700">GBA</span>
+      <span class="auth-sys-pill" style="--sc:#ff6b6b">NES</span>
+      <span class="auth-sys-pill" style="--sc:#a78bfa">SNES</span>
+      <span class="auth-sys-pill" style="--sc:#60a5fa">PS1</span>
+      <span class="auth-sys-pill" style="--sc:#fb923c">GG</span>
+      <span class="auth-sys-pill" style="--sc:#f87171">SMS</span>
+      <span class="auth-sys-pill" style="--sc:#e879f9">GEN</span>
     </div>
   </div>
 </div>
 
 <!-- ── SELECTOR ── -->
 <div id="selector">
-  <div class="logo">RETRO EMU</div>
-  <div class="logo-sub">CLOUDPHONE EDITION</div>
-
-  <svg class="gb-icon" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-    <rect width="16" height="16" fill="#111"/>
-    <rect x="2" y="1" width="12" height="14" rx="2" fill="#222" stroke="#00ff41" stroke-width="0.5"/>
-    <rect x="4" y="2" width="8" height="6" fill="#001a00" stroke="#007a1f" stroke-width="0.3"/>
-    <rect x="4" y="2" width="8" height="6" fill="rgba(0,255,65,0.08)"/>
-    <rect x="3" y="10" width="2" height="4" fill="#00ff41"/>
-    <rect x="2" y="11" width="4" height="2" fill="#00ff41"/>
-    <circle cx="12" cy="11" r="1" fill="#007a1f"/>
-    <circle cx="10" cy="12" r="1" fill="#007a1f"/>
-    <rect x="6" y="14" width="2" height="1" fill="#333"/>
-    <rect x="9" y="14" width="2" height="1" fill="#333"/>
-  </svg>
-
-  <div id="auth-user-bar" class="auth-user-bar" style="display:none">
-    <span class="auth-user-name">—</span>
-    <button class="auth-sign-out" id="sign-out-btn">SIGN OUT</button>
+  <div class="selector-header">
+    <div class="header-left">
+      <div class="logo">RETRO<span class="logo-accent">EMU</span></div>
+    </div>
+    <div class="header-right">
+      <button class="icon-btn" id="rom-refresh-btn" type="button" tabindex="0" title="Refresh ROMs">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>
+      </button>
+      <div id="auth-user-bar" class="auth-user-bar" style="display:none">
+        <span class="auth-user-name">—</span>
+        <button class="auth-sign-out" id="sign-out-btn" tabindex="0" title="Sign Out">OUT</button>
+      </div>
+    </div>
   </div>
 
-  <div class="section-label">SELECT ROM</div>
-  <button class="rom-refresh-btn" id="rom-refresh-btn" type="button">↺ REFRESH</button>
+  <div class="category-bar" id="category-bar"></div>
 
-  <div class="rom-list" id="rom-list"></div>
-
-  <div class="drive-setup-hint" id="drive-setup-hint" style="display:none">
-    <div class="hint-title">DRIVE SETUP</div>
-    Create this in your Google Drive:<br><br>
-    <code>cloudphone-emulator/</code><br>
-    <code>&nbsp;├─ gb/ &nbsp;&nbsp;&nbsp;&nbsp;.gb</code><br>
-    <code>&nbsp;├─ gbc/ &nbsp;&nbsp;&nbsp;.gbc</code><br>
-    <code>&nbsp;├─ gba/ &nbsp;&nbsp;&nbsp;.gba</code><br>
-    <code>&nbsp;├─ nes/ &nbsp;&nbsp;&nbsp;.nes</code><br>
-    <code>&nbsp;├─ snes/ &nbsp;&nbsp;.sfc / .smc</code><br>
-    <code>&nbsp;├─ psx/ &nbsp;&nbsp;&nbsp;.chd</code><br>
-    <code>&nbsp;├─ gg/ &nbsp;&nbsp;&nbsp;&nbsp;.gg</code><br>
-    <code>&nbsp;├─ sms/ &nbsp;&nbsp;&nbsp;.sms</code><br>
-    <code>&nbsp;├─ genesis/ .md / .bin</code><br>
-    <code>&nbsp;└─ bios/ &nbsp;&nbsp;BIOS files</code>
+  <div class="section-header">
+    <div class="section-label" id="section-label">SELECT ROM</div>
   </div>
 
-  <div class="selector-help-hint">press <span>0</span> for controls reference</div>
-  <div class="launch-hint">press <span>ENTER</span> to launch</div>
+  <div class="rom-scroll-area">
+    <div class="rom-list" id="rom-list"></div>
+    <div class="drive-setup-hint" id="drive-setup-hint" style="display:none">
+      <div class="hint-title">DRIVE SETUP</div>
+      <div class="hint-body">
+        Create this in your Google Drive:<br><br>
+        <code>cloudphone-emulator/</code><br>
+        <code>&nbsp;├─ gb/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gb</code><br>
+        <code>&nbsp;├─ gbc/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gbc</code><br>
+        <code>&nbsp;├─ gba/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gba</code><br>
+        <code>&nbsp;├─ nes/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.nes</code><br>
+        <code>&nbsp;├─ snes/&nbsp;&nbsp;&nbsp;&nbsp;.sfc / .smc</code><br>
+        <code>&nbsp;├─ psx/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.chd</code><br>
+        <code>&nbsp;├─ gg/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.gg</code><br>
+        <code>&nbsp;├─ sms/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.sms</code><br>
+        <code>&nbsp;├─ genesis/&nbsp;.md / .bin</code><br>
+        <code>&nbsp;└─ bios/&nbsp;&nbsp;&nbsp;&nbsp;BIOS files</code>
+      </div>
+    </div>
+  </div>
 
-  <div class="keymap">
-    <div class="keymap-title">CONTROLS</div>
-    <div class="keymap-grid">
-      <div class="keymap-row"><span class="keymap-key">↑↓←→</span><span class="keymap-action">D-PAD</span></div>
-      <div class="keymap-row"><span class="keymap-key">ENTER</span><span class="keymap-action">A</span></div>
-      <div class="keymap-row"><span class="keymap-key">1</span><span class="keymap-action">B</span></div>
-      <div class="keymap-row"><span class="keymap-key">2</span><span class="keymap-action">Y</span></div>
-      <div class="keymap-row"><span class="keymap-key">4</span><span class="keymap-action">X</span></div>
-      <div class="keymap-row"><span class="keymap-key">ESC</span><span class="keymap-action">START</span></div>
-      <div class="keymap-row"><span class="keymap-key">3</span><span class="keymap-action">SELECT</span></div>
-      <div class="keymap-row"><span class="keymap-key">5</span><span class="keymap-action">L</span></div>
-      <div class="keymap-row"><span class="keymap-key">6</span><span class="keymap-action">R</span></div>
-      <div class="keymap-row"><span class="keymap-key">7</span><span class="keymap-action">LOAD STATE</span></div>
-      <div class="keymap-row"><span class="keymap-key">9</span><span class="keymap-action">SAVE STATE</span></div>
-      <div class="keymap-row"><span class="keymap-key">RSK</span><span class="keymap-action">EXIT</span></div>
+  <div class="selector-bottom">
+    <div class="selector-footer">
+      <div class="selector-help-hint"><span>↑↓</span> roms</div>
+      <div class="selector-help-hint"><span>←→</span> category</div>
+      <div class="selector-help-hint"><span>↑↑</span> buttons</div>
+      <div class="selector-help-hint"><span>ENTER</span> launch</div>
+      <div class="selector-help-hint"><span>0</span> controls</div>
     </div>
   </div>
 </div>
 
 <!-- ── EMULATOR ── -->
 <div id="emulator-screen">
-
   <div id="save-confirm">
-    <div class="confirm-title">⚠ OVERWRITE SAVE?</div>
+    <div class="confirm-title">OVERWRITE SAVE?</div>
     <div class="confirm-msg">A save already exists for this game.</div>
     <div class="confirm-hint">Press <span>9</span> again to overwrite &nbsp;|&nbsp; Any other key cancels</div>
   </div>
@@ -129,7 +137,10 @@
   </div>
 
   <div id="emulator-wrapper">
-    <div id="loading-msg">LOADING<span class="loading-dot">_</span></div>
+    <div id="loading-msg">
+      <div class="loading-spinner"></div>
+      <span>LOADING<span class="loading-dot">_</span></span>
+    </div>
   </div>
 
   <div class="key-hints" id="key-hints"></div>
@@ -147,7 +158,7 @@
 <script>
   document.getElementById('rom-refresh-btn').addEventListener('click', () => {
     if (!window.currentUser) return;
-    _cache.rootId = null; // force full re-scan
+    _cache.rootId = null;
     discoverRoms();
   });
 </script>
