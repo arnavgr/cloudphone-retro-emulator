@@ -561,11 +561,18 @@ async function _cloudBatteryDownload(romFile) {
 
 async function _cloudBatteryUpload(romFile, bytes) {
   if (!_cache.savesFolderId) { dbg('No saves/ folder for battery UL'); return false; }
-  const filename = _saveFileName(romFile);
+  const romBase = romFile.replace(/\.[^.]+$/, '');
+  const filename = _saveFileName(romFile); // .sav — used only when creating new
   dbg('Battery UL: ' + filename + ' (' + bytes.byteLength + 'B)');
   await _ensureFreshToken();
   try {
-    const existingId = _cache.savesFiles[filename.toLowerCase()] || null;
+    // Check BOTH extensions for an existing file — if the user imported a
+    // .srm from another emulator, we must overwrite that file, not create
+    // a duplicate .sav alongside it.
+    const existingId =
+      _cache.savesFiles[(romBase + '.sav').toLowerCase()] ||
+      _cache.savesFiles[(romBase + '.srm').toLowerCase()] ||
+      null;
     const ok = await safeWriteSaveFile(filename, bytes, existingId);
     if (ok) {
       if (!existingId) {
@@ -698,10 +705,7 @@ function _buildFilteredList() {
     btn.dataset.sys = rom.folder;
     btn.style.setProperty('--sys-color', SYS_COLORS[rom.folder] || '#00ff41');
     btn.style.setProperty('--rom-delay', i < 8 ? `${i * 20}ms` : '0ms');
-    const saveName = _saveFileName(rom.file).toLowerCase();
-    const hasSave = !!(_cache.savesFolderId && _cache.savesFiles[saveName]);
-    const saveDot = hasSave ? '<span class="rom-save-dot"></span>' : '';
-    btn.innerHTML = `<span class="rom-name">${rom.name}</span>${saveDot}<span class="rom-badge ${rom.cls}">${rom.label}</span>`;
+    btn.innerHTML = `<span class="rom-name">${rom.name}</span><span class="rom-badge ${rom.cls}">${rom.label}</span>`;
     btn.addEventListener('click', () => launchRom(i));
     list.appendChild(btn);
   });
@@ -920,8 +924,20 @@ async function _bootEJS(rom, romUrl) {
   const loadMsg = _ensureLoadingMsg();
   if (loadMsg) loadMsg.style.display = 'flex';
   window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/';
-  window.EJS_canvasWidth     = _isLandscape ? SCREEN.h : SCREEN.w;
-  window.EJS_canvasHeight    = _isLandscape ? SCREEN.w : SCREEN.h;
+  // Measure the ACTUAL #emulator-wrapper box rather than raw screen
+  // dimensions. The topbar (and key-hints bar in portrait) eat into the
+  // visible area, so SCREEN.w/SCREEN.h don't match the wrapper's real
+  // aspect ratio — with object-fit:contain that mismatch shows up as
+  // letterbox bars (most visible on 4:3 systems like PSX).
+  // offsetWidth/offsetHeight (not getBoundingClientRect) because
+  // landscape mode applies a CSS rotate(90deg) transform, and
+  // getBoundingClientRect returns the post-transform (swapped) box.
+  const _wrapperEl = document.getElementById('emulator-wrapper');
+  const _measuredW = _wrapperEl?.offsetWidth  || 0;
+  const _measuredH = _wrapperEl?.offsetHeight || 0;
+  window.EJS_canvasWidth     = _measuredW || (_isLandscape ? SCREEN.h : SCREEN.w);
+  window.EJS_canvasHeight    = _measuredH || (_isLandscape ? SCREEN.w : SCREEN.h);
+  dbg('Canvas res: ' + window.EJS_canvasWidth + 'x' + window.EJS_canvasHeight + ' (measured: ' + !!_measuredW + ')');
   window.EJS_disableDatabases = true;
   window.EJS_core_options    = { video_filter: 'none' };
   await _loadBios(rom.core);
