@@ -15,17 +15,19 @@ This project runs entirely in the browser, leveraging **EmulatorJS** for hardwar
 *   **Save Indicators:** Green dots next to ROM names in the list show which games have in-game save files.
 *   **Persistent Drive Access:** Google OAuth tokens are silently refreshed in the background via a serverless function, so Drive access never expires mid-session.
 
-## 🎮 Supported Systems
-
-*   **Nintendo:** GB, GBC, GBA, NES, SNES.
-*   **Sega:** Game Gear (GG), Master System (SMS), Genesis/Mega Drive (MD).
-*   **Sony:** PlayStation 1 (PS1/PSX).
-
 ## 🚀 Setup
+
+### ⚠️ Important Notice: "Unverified App" Warning & User Limits
+Because this emulator requires the ability to read your imported ROMs and write save files directly back to your Drive, it requires Google's "Full Drive" access scope. 
+
+Google classifies this as a "Restricted Scope." Because this is a free, hobby project, it has not gone through Google's expensive $10,000+ annual third-party security audit (CASA) required to "verify" the app. As a result:
+
+1. **The Warning Screen:** When you sign in for the first time, Google will display a scary **"Google hasn't verified this app"** warning. This is normal. To proceed, click **Advanced**, and then click **Go to cloudphone-retro-emulator (unsafe)**.
+2. **The 100-User Limit:** Google enforces a strict, permanent lifetime cap of **100 distinct users** for unverified apps. Once 100 different Google accounts have authorized this app, no new users will be able to sign in. If you are reading this and can sign in, you are one of the 100!
 
 ### First Time
 
-1. Sign in with your Google Account.
+1. Sign in with your Google Account. (Read the warning note above!).
 2. The app automatically creates a `cloudphone-emulator` folder in your Google Drive with all required subfolders.
 3. Open Google Drive (on any device) and add your *legally* acquired ROM files to the system folders inside `cloudphone-emulator/`.
 4. Come back to the app and press **refresh**.
