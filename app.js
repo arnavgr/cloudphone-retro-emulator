@@ -705,7 +705,13 @@ function _buildFilteredList() {
     btn.dataset.sys = rom.folder;
     btn.style.setProperty('--sys-color', SYS_COLORS[rom.folder] || '#00ff41');
     btn.style.setProperty('--rom-delay', i < 8 ? `${i * 20}ms` : '0ms');
-    btn.innerHTML = `<span class="rom-name">${rom.name}</span><span class="rom-badge ${rom.cls}">${rom.label}</span>`;
+    const romBase = rom.file.replace(/\.[^.]+$/, '');
+    const hasSave = !!(_cache.savesFolderId && (
+      _cache.savesFiles[(romBase + '.sav').toLowerCase()] ||
+      _cache.savesFiles[(romBase + '.srm').toLowerCase()]
+    ));
+    const saveDot = hasSave ? '<span class="rom-save-dot"></span>' : '';
+    btn.innerHTML = `<span class="rom-name">${rom.name}</span>${saveDot}<span class="rom-badge ${rom.cls}">${rom.label}</span>`;
     btn.addEventListener('click', () => launchRom(i));
     list.appendChild(btn);
   });
@@ -744,8 +750,15 @@ function _initFocusSync() {
 // ══════════════════════════════════════════════════════════════
 // UI HELPERS
 // ══════════════════════════════════════════════════════════════
-function _setSaveStatus(text, cls) { const el = document.getElementById('save-status'); if (!el) return; el.textContent = text; el.className = 'save-status' + (cls ? ' ' + cls : ''); }
-function _clearSaveStatus(delay = 2000) { setTimeout(() => _setSaveStatus('SAV:ON', 'active'), delay); }
+let _toastHideTimer = null;
+function _setSaveStatus(text, cls) {
+  const el = document.getElementById('save-status');
+  if (el) { el.textContent = text; el.className = 'save-status' + (cls ? ' ' + cls : ''); }
+  const toast = document.getElementById('emu-toast');
+  if (toast) { clearTimeout(_toastHideTimer); toast.classList.add('visible'); }
+}
+function _hideToast() { document.getElementById('emu-toast')?.classList.remove('visible'); }
+function _clearSaveStatus(delay = 2000) { clearTimeout(_toastHideTimer); _toastHideTimer = setTimeout(_hideToast, delay); }
 function _setRomListMsg(msg) { const el = document.getElementById('rom-list'); if (el) el.innerHTML = `<div class="rom-list-msg">${msg}</div>`; const bar = document.getElementById('category-bar'); if (bar) bar.innerHTML = ''; }
 function _showSetupHint(show) { const el = document.getElementById('drive-setup-hint'); if (el) el.style.display = show ? 'block' : 'none'; }
 
@@ -821,7 +834,7 @@ function _dismissSaveConfirm() {
   clearTimeout(_saveConfirmTimer);
   document.getElementById('save-confirm')?.classList.remove('visible');
   _saveConfirmPending = false;
-  _setSaveStatus('SAV:ON', 'active');
+  _hideToast();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -877,6 +890,8 @@ async function exitRom() {
   if (window._lastStateBlobUrl) { URL.revokeObjectURL(window._lastStateBlobUrl); window._lastStateBlobUrl = null; }
   setLandscape(false);
   _currentRom = null;
+  clearTimeout(_toastHideTimer);
+  _hideToast();
   document.getElementById('emulator-screen').style.display = 'none';
   document.getElementById('selector').style.display = 'flex';
   document.getElementById('scanlines').style.display = 'block';

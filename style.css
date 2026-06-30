@@ -469,20 +469,28 @@ html, body {
   background: #000; position: fixed; top: 0; left: 0;
 }
 
-.emu-topbar {
-  width: 100%; display: flex; align-items: center;
-  justify-content: space-between; padding: 5px 8px;
-  background: var(--surface); border-bottom: 1px solid var(--border);
-  gap: 8px; flex-shrink: 0; z-index: 20;
+/* Floating toast — shows ROM title + save/slot status briefly, then fades.
+   position:fixed here is intentional: the rotated #emulator-screen
+   (landscape mode) establishes its own containing block for fixed
+   descendants, so this stays correctly anchored post-rotation —
+   same trick #save-confirm already relies on below. */
+#emu-toast {
+  position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
+  max-width: 90%; z-index: 30;
+  background: rgba(8,8,16,0.88); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  opacity: 0; transition: opacity 0.25s ease; pointer-events: none;
 }
+#emu-toast.visible { opacity: 1; }
 .emu-title {
   font-family: var(--font-pixel); font-size: 7px;
   letter-spacing: 1px; color: var(--green);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .save-status {
   font-family: var(--font-mono); font-size: 8px;
-  color: var(--text-dim); letter-spacing: 1px; flex-shrink: 0;
+  color: var(--text-dim); letter-spacing: 1px;
   transition: color 0.3s;
 }
 .save-status.active  { color: var(--green); }
@@ -546,7 +554,6 @@ body.landscape #emulator-screen {
 }
 body.landscape #emulator-wrapper { width: 100%; }
 body.landscape .key-hints        { display: none; }
-body.landscape .emu-topbar       { padding: 2px 6px; }
 
 
 /* ══════════════════════════════════════════════════════════════
