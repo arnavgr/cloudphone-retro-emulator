@@ -62,16 +62,6 @@ const _P = ['up arrow', 'down arrow', 'left arrow', 'right arrow'];
 const _L = ['right arrow', 'left arrow', 'up arrow', 'down arrow'];
 const _BTNS     = { a: 'enter', b: '1', start: 'escape', select: '3' };
 const _BTNS_EXT = { ..._BTNS, x: '4', y: '2', l: '5', r: '6' };
-function _genesisControls(dpad) {
-  return {
-    0:{ value: '1' }, 1:{ value: '4' }, 2:{ value: '3' }, 3:{ value: '' },
-    4:{ value: dpad[0] }, 5:{ value: dpad[1] }, 6:{ value: dpad[2] }, 7:{ value: dpad[3] },
-    8:{ value: 'enter' }, 9:{ value: 'escape' }, 10:{ value: '5' }, 11:{ value: '6' },
-    12:{ value: '' }, 13:{ value: '' }, 14:{ value: '' }, 15:{ value: '' },
-    24:{ value: '' }, 25:{ value: '' }, 26:{ value: '' }, 27:{ value: '' },
-    28:{ value: '' }, 29:{ value: '' },
-  };
-}
 const CONTROLS = {
   gambatte:     { portrait: _pad(_P, _BTNS),     landscape: _pad(_L, _BTNS)     },
   mgba:         { portrait: _pad(_P, _BTNS_EXT), landscape: _pad(_L, _BTNS_EXT) },
@@ -148,11 +138,19 @@ function _genericKeybinds() {
 // ══════════════════════════════════════════════════════════════
 // DRIVE CONFIG
 // ══════════════════════════════════════════════════════════════
-const DRIVE_ROOT = 'cloudphone-emulator';
-const DRIVE_BIOS = 'bios';
-const DRIVE_API = 'https://www.googleapis.com/drive/v3';
+const DRIVE_ROOT  = 'cloudphone-emulator';
+const DRIVE_BIOS  = 'bios';
+const DRIVE_SAVES = 'saves';
+const DRIVE_API    = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
-const _cache = { rootId: null, biosId: null, biosFiles: {}, romBlobs: {}, biosBlobs: {} };
+const REQUIRED_FOLDERS = ['gb', 'gbc', 'gba', 'nes', 'snes', 'psx', 'gg', 'sms', 'genesis', 'bios', 'saves'];
+
+const _cache = {
+  rootId: null,
+  biosId: null, biosFiles: {}, biosIndexed: false,
+  savesFolderId: null, savesFiles: {}, savesIndexed: false,
+  romBlobs: {}, biosBlobs: {},
+};
 
 // ══════════════════════════════════════════════════════════════
 // APP STATE
@@ -215,6 +213,21 @@ async function driveFindFolder(name, parentId) {
   const data = await _driveGet(`/files?q=${q}&fields=files(id)&pageSize=1`);
   return data.files?.[0]?.id || null;
 }
+async function driveCreateFolder(name, parentId) {
+  const res = await window.driveApiFetch(`${DRIVE_API}/files`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: parentId ? [parentId] : ['root'],
+    }),
+  });
+  if (!res.ok) { dbg('driveCreateFolder ERR: ' + res.status); return null; }
+  const data = await res.json();
+  dbg('Created folder: ' + name + ' → ' + data.id);
+  return data.id || null;
+}
 async function driveListChildren(parentId, foldersOnly = false) {
   const mf = foldersOnly ? `and mimeType='application/vnd.google-apps.folder'` : `and mimeType!='application/vnd.google-apps.folder'`;
   const q = encodeURIComponent(`'${parentId}' in parents ${mf} and trashed=false`);
@@ -255,6 +268,93 @@ async function driveWriteAppFile(filename, bytes, existingId = null) {
   const res = await window.driveApiFetch(`${DRIVE_UPLOAD}/files?uploadType=multipart`, { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body });
   return res.ok;
 }
+async function driveFindFileInFolder(parentId, filename) {
+  const q = encodeURIComponent(`name='${filename}' and '${parentId}' in parents and trashed=false`);
+  try {
+    const data = await _driveGet(`/files?q=${q}&fields=files(id)&pageSize=1`);
+    return data.files?.[0]?.id || null;
+  } catch (err) { return null; }
+}
+
+// ══════════════════════════════════════════════════════════════
+// SAFETY GATE — all visible Drive writes go through here
+// This is the ONLY function that writes to user-visible files.
+// It REFUSES any write that isn't inside the saves/ folder.
+// ══════════════════════════════════════════════════════════════
+async function safeWriteSaveFile(filename, bytes, existingFileId = null) {
+  if (!_cache.savesFolderId) {
+    dbg('SAFETY BLOCK: no saves/ folder ID — write refused');
+    return false;
+  }
+  if (existingFileId) {
+    try {
+      const data = await _driveGet(`/files/${existingFileId}?fields=parents`);
+      const parents = data.parents || [];
+      if (!parents.includes(_cache.savesFolderId)) {
+        dbg('SAFETY BLOCK: file ' + existingFileId + ' not in saves/ — write refused');
+        return false;
+      }
+    } catch (err) {
+      dbg('SAFETY BLOCK: could not verify parent — write refused: ' + err.message);
+      return false;
+    }
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const res = await window.driveApiFetch(
+      `${DRIVE_UPLOAD}/files/${existingFileId}?uploadType=media`,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/octet-stream' }, body: blob }
+    );
+    dbg('SAFETY OK: updated ' + filename + ' (' + (res.ok ? 'ok' : 'HTTP ' + res.status) + ')');
+    return res.ok;
+  }
+  const boundary = 'emu_mp_boundary';
+  const meta = JSON.stringify({ name: filename, parents: [_cache.savesFolderId] });
+  const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/octet-stream\r\n\r\n`;
+  const close = `\r\n--${boundary}--`;
+  const preB = new TextEncoder().encode(pre);
+  const closeB = new TextEncoder().encode(close);
+  const body = new Uint8Array(preB.byteLength + bytes.byteLength + closeB.byteLength);
+  body.set(preB, 0); body.set(bytes, preB.byteLength); body.set(closeB, preB.byteLength + bytes.byteLength);
+  const res = await window.driveApiFetch(
+    `${DRIVE_UPLOAD}/files?uploadType=multipart`,
+    { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body }
+  );
+  dbg('SAFETY OK: created ' + filename + ' (' + (res.ok ? 'ok' : 'HTTP ' + res.status) + ')');
+  return res.ok;
+}
+
+// ══════════════════════════════════════════════════════════════
+// AUTO-PROVISION DRIVE FOLDERS
+// Creates the entire folder tree on first sign-in.
+// ══════════════════════════════════════════════════════════════
+async function _ensureDriveStructure() {
+  let rootId = await driveFindFolder(DRIVE_ROOT, null);
+  let rootCreated = false;
+
+  if (!rootId) {
+    dbg('First launch — creating ' + DRIVE_ROOT + '/');
+    rootId = await driveCreateFolder(DRIVE_ROOT, null);
+    if (!rootId) return 'error';
+    rootCreated = true;
+  }
+  _cache.rootId = rootId;
+
+  for (const name of REQUIRED_FOLDERS) {
+    const existingId = await driveFindFolder(name, _cache.rootId);
+    if (!existingId) {
+      dbg('Creating subfolder: ' + name + '/');
+      const newId = await driveCreateFolder(name, _cache.rootId);
+      if (newId) {
+        if (name === 'bios') _cache.biosId = newId;
+        if (name === 'saves') _cache.savesFolderId = newId;
+      }
+    } else {
+      if (name === 'bios') _cache.biosId = existingId;
+      if (name === 'saves') _cache.savesFolderId = existingId;
+    }
+  }
+
+  return rootCreated ? 'created' : 'exists';
+}
 
 // ══════════════════════════════════════════════════════════════
 // ROM DISCOVERY
@@ -262,11 +362,16 @@ async function driveWriteAppFile(filename, bytes, existingId = null) {
 async function discoverRoms() {
   if (_isScanning) return;
   _isScanning = true;
-  _setRomListMsg('SCANNING DRIVE...');
+  _setRomListMsg('SETTING UP DRIVE...');
   dbg('discoverRoms: start — screen ' + SCREEN.toString());
   try {
-    _cache.rootId = _cache.rootId || await driveFindFolder(DRIVE_ROOT, null);
-    if (!_cache.rootId) { _setRomListMsg('FOLDER NOT FOUND — create "cloudphone-emulator" in your Google Drive'); _showSetupHint(true); return; }
+    const setupResult = await _ensureDriveStructure();
+    if (setupResult === 'error') {
+      _setRomListMsg('DRIVE SETUP FAILED — check connection and try again');
+      _isScanning = false;
+      return;
+    }
+
     _showSetupHint(false);
     const subfolders = await driveListChildren(_cache.rootId, true);
     dbg('Subfolders: ' + subfolders.map(f => f.name).join(', '));
@@ -289,8 +394,41 @@ async function discoverRoms() {
       }
     }
     dbg('Total ROMs: ' + ROMS.length);
-    if (ROMS.length === 0) { _setRomListMsg('NO ROMS FOUND — add ROM files to your cloudphone-emulator subfolders'); _showSetupHint(true); return; }
+
+    if (ROMS.length === 0) {
+      const bar = document.getElementById('category-bar');
+      if (bar) bar.innerHTML = '';
+      const list = document.getElementById('rom-list');
+      if (list) {
+        if (setupResult === 'created') {
+          list.innerHTML = `
+            <div class="rom-list-msg" style="padding:12px 8px;">
+              <div style="color:var(--green);font-family:var(--font-pixel);font-size:8px;letter-spacing:1px;margin-bottom:10px;">FOLDERS CREATED!</div>
+              <div style="line-height:2.2;">
+                A <span class="msg-highlight">cloudphone-emulator</span> folder<br>
+                was added to your Google Drive.<br><br>
+                Add your ROM files to the<br>
+                system folders inside it, then<br>
+                press <span class="msg-gold">refresh</span> to scan.
+              </div>
+            </div>`;
+        } else {
+          list.innerHTML = `
+            <div class="rom-list-msg">
+              NO ROMS FOUND<br><br>
+              Add ROM files to your<br>
+              <span class="msg-highlight">cloudphone-emulator</span> system folders,<br>
+              then press <span class="msg-gold">refresh</span>
+            </div>`;
+        }
+      }
+      _isScanning = false;
+      return;
+    }
+
     _prefetchBios();
+    _cache.savesIndexed = false;
+    _prefetchSaves();
     _buildRomList();
   } catch (err) {
     dbg('discoverRoms ERR: ' + err.message);
@@ -299,18 +437,19 @@ async function discoverRoms() {
 }
 
 async function _prefetchBios() {
-  if (_cache.biosId !== null) return;
+  if (_cache.biosIndexed) return;
+  if (!_cache.biosId) { _cache.biosIndexed = true; return; }
   try {
-    _cache.biosId = await driveFindFolder(DRIVE_BIOS, _cache.rootId) || '';
-    if (_cache.biosId) { const files = await driveListChildren(_cache.biosId, false); for (const f of files) _cache.biosFiles[f.name.toLowerCase()] = f.id; dbg('BIOS indexed: ' + Object.keys(_cache.biosFiles).join(', ')); }
-    else dbg('No bios/ folder found');
-  } catch (err) { _cache.biosId = ''; dbg('_prefetchBios ERR: ' + err.message); }
+    const files = await driveListChildren(_cache.biosId, false);
+    for (const f of files) _cache.biosFiles[f.name.toLowerCase()] = f.id;
+    dbg('BIOS indexed: ' + Object.keys(_cache.biosFiles).join(', '));
+  } catch (err) { dbg('_prefetchBios ERR: ' + err.message); }
+  _cache.biosIndexed = true;
 }
 
 async function _loadBios(core) {
   const required = BIOS_REGISTRY[core];
   if (!required) return true;
-  if (!_cache.biosId) await _prefetchBios();
   if (!_cache.biosId) { dbg('BIOS folder missing for ' + core); return false; }
   let allOk = true;
   for (const { file, ejsVar, required: req } of required) {
@@ -340,7 +479,7 @@ const _origOnAuthSuccess = window.onAuthSuccess;
 window.onAuthSuccess = function(user) { _markTokenFresh(); if (typeof _origOnAuthSuccess === 'function') _origOnAuthSuccess(user); };
 
 // ══════════════════════════════════════════════════════════════
-// SAVE STATE — CLOUD
+// SAVE STATE — CLOUD (appDataFolder — unchanged)
 // ══════════════════════════════════════════════════════════════
 function _saveKey(gameName) {
   const uid = window.currentUser?.id || 'anon';
@@ -376,6 +515,128 @@ async function _cloudUpload(gameName, bytes) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// BATTERY SAVE — VISIBLE DRIVE FOLDER
+//
+// All in-game saves live in cloudphone-emulator/saves/
+// Naming: {ROM name}.sav (matches ROM filename exactly)
+// On launch: reads .sav then .srm (backward compat)
+// On exit + every 5min: SRAM → uploads to saves/
+// Users can see, move, replace, backup these files in Drive.
+// ══════════════════════════════════════════════════════════════
+
+function _saveFileName(romFile) {
+  return romFile.replace(/\.[^.]+$/, '') + '.sav';
+}
+
+async function _prefetchSaves() {
+  if (_cache.savesIndexed) return;
+  if (!_cache.savesFolderId) { _cache.savesIndexed = true; return; }
+  try {
+    const files = await driveListChildren(_cache.savesFolderId, false);
+    for (const f of files) _cache.savesFiles[f.name.toLowerCase()] = f.id;
+    dbg('Saves indexed: ' + Object.keys(_cache.savesFiles).join(', '));
+  } catch (err) { dbg('_prefetchSaves ERR: ' + err.message); }
+  _cache.savesIndexed = true;
+}
+
+async function _cloudBatteryDownload(romFile) {
+  if (!_cache.savesFolderId) { dbg('No saves/ folder for battery DL'); return null; }
+  const romBase = romFile.replace(/\.[^.]+$/, '');
+  const candidates = [romBase + '.sav', romBase + '.srm', romFile + '.sav', romFile + '.srm'];
+  for (const name of candidates) {
+    const fileId = _cache.savesFiles[name.toLowerCase()];
+    if (!fileId) continue;
+    try {
+      const res = await window.driveApiFetch(`${DRIVE_API}/files/${fileId}?alt=media`);
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        dbg('Battery DL: ' + name + ' (' + buf.byteLength + 'B)');
+        return new Uint8Array(buf);
+      }
+    } catch (err) { dbg('Battery DL ERR ' + name + ': ' + err.message); }
+  }
+  dbg('No battery save found for: ' + romFile);
+  return null;
+}
+
+async function _cloudBatteryUpload(romFile, bytes) {
+  if (!_cache.savesFolderId) { dbg('No saves/ folder for battery UL'); return false; }
+  const romBase = romFile.replace(/\.[^.]+$/, '');
+  const filename = _saveFileName(romFile); // .sav — used only when creating new
+  dbg('Battery UL: ' + filename + ' (' + bytes.byteLength + 'B)');
+  await _ensureFreshToken();
+  try {
+    // Check BOTH extensions for an existing file — if the user imported a
+    // .srm from another emulator, we must overwrite that file, not create
+    // a duplicate .sav alongside it.
+    const existingId =
+      _cache.savesFiles[(romBase + '.sav').toLowerCase()] ||
+      _cache.savesFiles[(romBase + '.srm').toLowerCase()] ||
+      null;
+    const ok = await safeWriteSaveFile(filename, bytes, existingId);
+    if (ok) {
+      if (!existingId) {
+        const freshId = await driveFindFileInFolder(_cache.savesFolderId, filename);
+        if (freshId) _cache.savesFiles[filename.toLowerCase()] = freshId;
+      }
+      dbg('Battery UL: OK');
+    } else {
+      dbg('Battery UL: FAILED');
+    }
+    return ok;
+  } catch (err) { dbg('Battery UL ERR: ' + err.message); return false; }
+}
+
+async function _extractAndUploadBattery(rom) {
+  if (!window.EJS_emulator || !rom) return;
+  try {
+    const gm = window.EJS_emulator.gameManager;
+    const FS = window.EJS_emulator.Module?.FS;
+    if (!gm || !FS || typeof gm.getSaveFilePath !== 'function') return;
+    try { gm.saveSaveFiles(); } catch (_) {}
+    await new Promise(r => setTimeout(r, 100));
+    const savePath = gm.getSaveFilePath();
+    if (!savePath) return;
+    const srm = FS.readFile(savePath);
+    if (!srm?.byteLength) return;
+    const isBlank = [...srm.slice(0, 64)].every(b => b === 0x00 || b === 0xFF);
+    if (isBlank) { dbg('Battery extract: blank SRAM, skipping'); return; }
+    await _cloudBatteryUpload(rom.file, srm);
+  } catch (err) { dbg('_extractAndUploadBattery ERR: ' + err.message); }
+}
+
+function _injectBatterySave(rom) {
+  let done = false;
+  const deadline = Date.now() + 120_000;
+  const poll = setInterval(async () => {
+    if (done || Date.now() > deadline) { clearInterval(poll); return; }
+    const FS = window.EJS_emulator?.Module?.FS;
+    const gm = window.EJS_emulator?.gameManager;
+    if (!FS || !gm || typeof gm.getSaveFilePath !== 'function') return;
+    done = true;
+    clearInterval(poll);
+    const bytes = await _cloudBatteryDownload(rom.file);
+    if (!bytes?.byteLength) { dbg('No battery save to inject for: ' + rom.file); return; }
+    const savePath = gm.getSaveFilePath();
+    dbg('Injecting battery save → ' + savePath);
+    const parts = savePath.split('/').filter(Boolean);
+    let built = '';
+    for (let i = 0; i < parts.length - 1; i++) { built += '/' + parts[i]; try { FS.mkdir(built); } catch (_) {} }
+    FS.writeFile(savePath, bytes);
+    try { gm.loadSaveFiles(); } catch (_) {}
+    await new Promise(r => setTimeout(r, 300));
+    const live = gm.getSaveFile?.();
+    const isEmpty = !live || [...live.slice(0, 32)].every(b => b === 0x00 || b === 0xFF);
+    if (isEmpty) {
+      dbg('SRAM still empty — restarting core to re-read save');
+      setTimeout(() => { try { gm.restart(); } catch (_) {} }, 200);
+    } else {
+      dbg('Battery save active in SRAM (' + live.byteLength + 'B)');
+    }
+  }, 20);
+}
+
+// ══════════════════════════════════════════════════════════════
 // CATEGORY SYSTEM
 // ══════════════════════════════════════════════════════════════
 function _buildCategoryBar() {
@@ -404,7 +665,7 @@ function _buildCategoryBar() {
 }
 function _filterRoms() {
   if (_activeCategory === 'all') { _filteredRoms = [...ROMS]; }
-  else { _filteredRoms = ROMS.filter(r => r.folder === _activeCategory); if (_filteredRoms.length === 0) { _activeCategory = 'all'; _filteredRoms = [...ROMS]; } }
+  else { _filteredRoms = ROMS.filter(r => r.folder === _activeCategory); }
 }
 function _setCategory(cat) {
   _activeCategory = cat;
@@ -428,14 +689,29 @@ function _cycleCategory(direction) {
 function _buildFilteredList() {
   const list = document.getElementById('rom-list');
   list.innerHTML = '';
-  if (_filteredRoms.length === 0) { list.innerHTML = '<div class="rom-list-msg">NO ROMS IN THIS CATEGORY</div>'; return; }
+  if (_filteredRoms.length === 0) {
+    if (_activeCategory === 'all') {
+      list.innerHTML = `<div class="rom-list-msg">NO ROMS FOUND<br><br>Add ROM files to your<br><span class="msg-highlight">cloudphone-emulator</span> system folders,<br>then press <span class="msg-gold">refresh</span></div>`;
+    } else {
+      const label = SYSTEMS[_activeCategory]?.label || _activeCategory.toUpperCase();
+      const ext = _activeCategory === 'psx' ? '.chd' : '.' + _activeCategory;
+      list.innerHTML = `<div class="rom-list-msg">NO ${label} ROMS<br><br>Add <span class="msg-highlight">${ext}</span> files to the<br>${_activeCategory}/ folder in Drive</div>`;
+    }
+    return;
+  }
   _filteredRoms.forEach((rom, i) => {
     const btn = document.createElement('button');
     btn.className = 'rom-item' + (i === 0 ? ' selected' : '');
     btn.dataset.sys = rom.folder;
     btn.style.setProperty('--sys-color', SYS_COLORS[rom.folder] || '#00ff41');
     btn.style.setProperty('--rom-delay', i < 8 ? `${i * 20}ms` : '0ms');
-    btn.innerHTML = `<span class="rom-name">${rom.name}</span><span class="rom-badge ${rom.cls}">${rom.label}</span>`;
+    const romBase = rom.file.replace(/\.[^.]+$/, '');
+    const hasSave = !!(_cache.savesFolderId && (
+      _cache.savesFiles[(romBase + '.sav').toLowerCase()] ||
+      _cache.savesFiles[(romBase + '.srm').toLowerCase()]
+    ));
+    const saveDot = hasSave ? '<span class="rom-save-dot"></span>' : '';
+    btn.innerHTML = `<span class="rom-name">${rom.name}</span>${saveDot}<span class="rom-badge ${rom.cls}">${rom.label}</span>`;
     btn.addEventListener('click', () => launchRom(i));
     list.appendChild(btn);
   });
@@ -474,8 +750,15 @@ function _initFocusSync() {
 // ══════════════════════════════════════════════════════════════
 // UI HELPERS
 // ══════════════════════════════════════════════════════════════
-function _setSaveStatus(text, cls) { const el = document.getElementById('save-status'); if (!el) return; el.textContent = text; el.className = 'save-status' + (cls ? ' ' + cls : ''); }
-function _clearSaveStatus(delay = 2000) { setTimeout(() => _setSaveStatus('SAV:ON', 'active'), delay); }
+let _toastHideTimer = null;
+function _setSaveStatus(text, cls) {
+  const el = document.getElementById('save-status');
+  if (el) { el.textContent = text; el.className = 'save-status' + (cls ? ' ' + cls : ''); }
+  const toast = document.getElementById('emu-toast');
+  if (toast) { clearTimeout(_toastHideTimer); toast.classList.add('visible'); }
+}
+function _hideToast() { document.getElementById('emu-toast')?.classList.remove('visible'); }
+function _clearSaveStatus(delay = 2000) { clearTimeout(_toastHideTimer); _toastHideTimer = setTimeout(_hideToast, delay); }
 function _setRomListMsg(msg) { const el = document.getElementById('rom-list'); if (el) el.innerHTML = `<div class="rom-list-msg">${msg}</div>`; const bar = document.getElementById('category-bar'); if (bar) bar.innerHTML = ''; }
 function _showSetupHint(show) { const el = document.getElementById('drive-setup-hint'); if (el) el.style.display = show ? 'block' : 'none'; }
 
@@ -503,9 +786,6 @@ function _renderPortraitHints() {
   ).join('');
 }
 
-// Recreate the loading message inside the wrapper.
-// EmulatorJS replaces wrapper contents during gameplay, so this
-// div is destroyed and needs rebuilding before each launch.
 function _ensureLoadingMsg() {
   let loadMsg = document.getElementById('loading-msg');
   if (!loadMsg) {
@@ -554,11 +834,11 @@ function _dismissSaveConfirm() {
   clearTimeout(_saveConfirmTimer);
   document.getElementById('save-confirm')?.classList.remove('visible');
   _saveConfirmPending = false;
-  _setSaveStatus('SAV:ON', 'active');
+  _hideToast();
 }
 
 // ══════════════════════════════════════════════════════════════
-// SAVE / LOAD
+// SAVE / LOAD (save states — appDataFolder)
 // ══════════════════════════════════════════════════════════════
 async function manualSave() {
   if (!_saveConfirmPending) { if (await _cloudSaveExists(window.EJS_gameName)) { _showSaveConfirm(); return; } await _doSave(); return; }
@@ -591,42 +871,30 @@ async function manualLoad() {
 }
 
 // ══════════════════════════════════════════════════════════════
-// EXIT — just destroy the instance, keep window.EJS class alive
+// EXIT
 // ══════════════════════════════════════════════════════════════
-function exitRom() {
+async function exitRom() {
   _dismissSaveConfirm();
   document.getElementById('keybinds-overlay')?.classList.remove('visible');
-
-  // Stop the emulator
-  if (window.EJS_emulator) {
-    try { window.EJS_emulator.gameManager?.pause(); } catch (e) {}
+  if (window._batteryAutoSave) { clearInterval(window._batteryAutoSave); window._batteryAutoSave = null; }
+  if (window.EJS_emulator && _currentRom) {
+    _setSaveStatus('SAVING...', 'saving');
+    await _extractAndUploadBattery(_currentRom);
   }
+  if (window.EJS_emulator) { try { window.EJS_emulator.gameManager?.pause(); } catch (e) {} }
   delete window.EJS_emulator;
-
-  // Clear wrapper DOM (removes canvas, EJS UI, loading msg)
   const wrapper = document.getElementById('emulator-wrapper');
   if (wrapper) wrapper.innerHTML = '';
-
-  // IMPORTANT: Do NOT delete window.EJS — the class definition must
-  // survive so we can call `new EJS(element, config)` on the next launch.
-  // Do NOT remove EJS scripts — they're cached and the class lives in them.
-
-  // Revoke ROM blob URLs
   for (const url of Object.values(_cache.romBlobs)) URL.revokeObjectURL(url);
   _cache.romBlobs = {};
-
-  if (window._lastStateBlobUrl) {
-    URL.revokeObjectURL(window._lastStateBlobUrl);
-    window._lastStateBlobUrl = null;
-  }
-
+  if (window._lastStateBlobUrl) { URL.revokeObjectURL(window._lastStateBlobUrl); window._lastStateBlobUrl = null; }
   setLandscape(false);
   _currentRom = null;
-
+  clearTimeout(_toastHideTimer);
+  _hideToast();
   document.getElementById('emulator-screen').style.display = 'none';
   document.getElementById('selector').style.display = 'flex';
   document.getElementById('scanlines').style.display = 'block';
-
   requestAnimationFrame(() => _focusRomItem(_romIndex));
 }
 
@@ -636,81 +904,59 @@ function exitRom() {
 async function launchRom(index) {
   const rom = _filteredRoms[index];
   if (!rom || !window.currentUser) return;
-
   _currentRom = rom;
   _saveConfirmPending = false;
-
   setLandscape(rom.landscape);
   document.getElementById('selector').style.display = 'none';
   document.getElementById('emulator-screen').style.display = 'flex';
   document.getElementById('emu-title').textContent = rom.name.toUpperCase();
   document.getElementById('scanlines').style.display = 'none';
   _setSaveStatus('ROM DL...', 'saving');
-
   const loadMsg = _ensureLoadingMsg();
   if (loadMsg) loadMsg.style.display = 'flex';
-
   if (!rom.landscape) _renderPortraitHints();
-
   let romUrl;
-  try {
-    romUrl = await driveDownloadBlob(rom.fileId, _cache.romBlobs);
-  } catch (err) {
+  try { romUrl = await driveDownloadBlob(rom.fileId, _cache.romBlobs); }
+  catch (err) {
     dbg('ROM DL ERR: ' + err.message);
     const lm = document.getElementById('loading-msg');
     if (lm) lm.innerHTML = 'ROM DOWNLOAD FAILED<br><span style="font-size:8px;color:#555">Press RSK to exit</span>';
     _setSaveStatus('ROM ERR', '');
     return;
   }
-
   _bootEJS(rom, romUrl);
 }
 
 // ══════════════════════════════════════════════════════════════
 // EMULATORJS BOOT
-//
-// Two paths:
-//   1) First launch: window.EJS doesn't exist yet.
-//      → Set globals, load loader.js (which defines window.EJS
-//        and auto-starts via the globals).
-//
-//   2) Subsequent launches: window.EJS is already defined.
-//      → Call `new EJS(element, config)` directly with a config
-//        object. This is the "Advanced Usage" pattern from the
-//        EmulatorJS v4 docs. No need to reload loader.js.
-//
-// This avoids the entire "loader.js IIFE won't re-run" problem
-// because we never try to re-load it.
 // ══════════════════════════════════════════════════════════════
 async function _bootEJS(rom, romUrl) {
   dbg('_bootEJS: "' + rom.name + '" core=' + rom.core + ' EJS=' + typeof window.EJS);
-
-  // Stop and discard any previous emulator instance
-  if (window.EJS_emulator) {
-    try { window.EJS_emulator.gameManager?.pause(); } catch (e) {}
-  }
+  if (window.EJS_emulator) { try { window.EJS_emulator.gameManager?.pause(); } catch (e) {} }
   delete window.EJS_emulator;
-
-  // Clear the wrapper (removes old canvas, EJS chrome)
   const wrapper = document.getElementById('emulator-wrapper');
   if (wrapper) wrapper.innerHTML = '';
-
-  // Re-add the loading message
   const loadMsg = _ensureLoadingMsg();
   if (loadMsg) loadMsg.style.display = 'flex';
-
-  // Set globals that the EJS class reads internally
-  // (these are custom hacks not part of the config object)
   window.EJS_pathtodata      = 'https://cdn.emulatorjs.org/stable/data/';
-  window.EJS_canvasWidth     = _isLandscape ? SCREEN.h : SCREEN.w;
-  window.EJS_canvasHeight    = _isLandscape ? SCREEN.w : SCREEN.h;
+  // Measure the ACTUAL #emulator-wrapper box rather than raw screen
+  // dimensions. The topbar (and key-hints bar in portrait) eat into the
+  // visible area, so SCREEN.w/SCREEN.h don't match the wrapper's real
+  // aspect ratio — with object-fit:contain that mismatch shows up as
+  // letterbox bars (most visible on 4:3 systems like PSX).
+  // offsetWidth/offsetHeight (not getBoundingClientRect) because
+  // landscape mode applies a CSS rotate(90deg) transform, and
+  // getBoundingClientRect returns the post-transform (swapped) box.
+  const _wrapperEl = document.getElementById('emulator-wrapper');
+  const _measuredW = _wrapperEl?.offsetWidth  || 0;
+  const _measuredH = _wrapperEl?.offsetHeight || 0;
+  window.EJS_canvasWidth     = _measuredW || (_isLandscape ? SCREEN.h : SCREEN.w);
+  window.EJS_canvasHeight    = _measuredH || (_isLandscape ? SCREEN.w : SCREEN.h);
+  dbg('Canvas res: ' + window.EJS_canvasWidth + 'x' + window.EJS_canvasHeight + ' (measured: ' + !!_measuredW + ')');
   window.EJS_disableDatabases = true;
   window.EJS_core_options    = { video_filter: 'none' };
-
-  // Load BIOS if needed (sets window.EJS_biosUrl)
   await _loadBios(rom.core);
 
-  // Shared callback for when the game starts playing
   const onGameStart = () => {
     const loadingMsg = document.getElementById('loading-msg');
     if (loadingMsg) loadingMsg.style.display = 'none';
@@ -720,68 +966,53 @@ async function _bootEJS(rom, romUrl) {
     let attempts = 0;
     const findCanvas = setInterval(() => {
       const canvas = document.querySelector('canvas');
-      if (canvas) { canvas.style.imageRendering = 'pixelated'; canvas.style.transform = 'translateZ(0)'; dbg('Hack 4: Canvas isolated'); clearInterval(findCanvas); }
-      else if (attempts++ > 50) { dbg('Hack 4 ERR: Canvas not found'); clearInterval(findCanvas); }
+      if (canvas) { canvas.style.imageRendering = 'pixelated'; canvas.style.transform = 'translateZ(0)'; dbg('Canvas isolated'); clearInterval(findCanvas); }
+      else if (attempts++ > 50) { dbg('Canvas not found'); clearInterval(findCanvas); }
     }, 100);
+    if (window._batteryAutoSave) clearInterval(window._batteryAutoSave);
+    window._batteryAutoSave = setInterval(async () => {
+      if (!_currentRom || document.getElementById('emulator-screen')?.style.display === 'none') {
+        clearInterval(window._batteryAutoSave); window._batteryAutoSave = null; return;
+      }
+      dbg('Battery auto-save...');
+      await _extractAndUploadBattery(_currentRom);
+    }, 5 * 60 * 1000);
   };
 
-  // The EJS_Buttons config — same for both paths
   const buttons = {
     playPause: false, restart: false, mute: false, settings: false,
     fullscreen: false, saveState: false, loadState: false,
     screenRecord: false, gamepad: false, cheat: false, volume: false,
     saveSavFiles: false, loadSavFiles: false, quickSave: false, quickLoad: false,
   };
-
-  // The defaultControls config — same for both paths
   const defaultControls = { 0: getControls(rom.core, rom.landscape), 1: {}, 2: {}, 3: {} };
+  _injectBatterySave(rom);
 
   if (typeof window.EJS === 'function') {
-    // ── Subsequent launches: use the constructor directly ──
     dbg('_bootEJS: calling new EJS(element, config)');
-
     const playerEl = document.getElementById('emulator-wrapper');
     if (!playerEl) { dbg('ERROR: #emulator-wrapper not found'); return; }
-
     const config = {
-      gameUrl: romUrl,
-      core: rom.core,
-      gameName: rom.file,
-      startOnLoad: true,
-      muted: true,
-      color: '#00ff41',
-      backgroundColor: '#000000',
-      defaultControls: defaultControls,
-      buttons: buttons,
-      onGameStart: onGameStart,
+      gameUrl: romUrl, core: rom.core, gameName: rom.file,
+      startOnLoad: true, muted: true, color: '#00ff41', backgroundColor: '#000000',
+      defaultControls, buttons, onGameStart,
     };
-
-    // Pass BIOS URL if loaded
     if (window.EJS_biosUrl) config.biosUrl = window.EJS_biosUrl;
-
-    try {
-      new window.EJS(playerEl, config);
-      dbg('EJS instance created via constructor');
-    } catch (e) {
-      dbg('EJS constructor ERR: ' + e.message);
-    }
-
+    try { new window.EJS(playerEl, config); dbg('EJS instance created'); }
+    catch (e) { dbg('EJS constructor ERR: ' + e.message); }
   } else {
-    // ── First launch: set globals, load loader.js ──
     dbg('_bootEJS: loading loader.js (first launch)');
-
-    window.EJS_player          = '#emulator-wrapper';
-    window.EJS_gameUrl         = romUrl;
-    window.EJS_gameName        = rom.file;
-    window.EJS_core            = rom.core;
-    window.EJS_startOnLoaded   = true;
-    window.EJS_muted           = true;
-    window.EJS_color           = '#00ff41';
+    window.EJS_player = '#emulator-wrapper';
+    window.EJS_gameUrl = romUrl;
+    window.EJS_gameName = rom.file;
+    window.EJS_core = rom.core;
+    window.EJS_startOnLoaded = true;
+    window.EJS_muted = true;
+    window.EJS_color = '#00ff41';
     window.EJS_backgroundColor = '#000000';
-    window.EJS_onGameStart     = onGameStart;
+    window.EJS_onGameStart = onGameStart;
     window.EJS_defaultControls = defaultControls;
-    window.EJS_Buttons         = buttons;
-
+    window.EJS_Buttons = buttons;
     const script = document.createElement('script');
     script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
     script.className = 'ejs-script';
