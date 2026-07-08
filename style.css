@@ -20,7 +20,6 @@
   --gold:      #ffd700;
   --red:       #ff4757;
 
-  --sys-gb:   #00ff41;
   --sys-gbc:  #7cfc00;
   --sys-gba:  #ffd700;
   --sys-nes:  #ff6b6b;
@@ -409,7 +408,6 @@ html, body {
   border-radius: 2px; flex-shrink: 0;
   text-transform: uppercase; font-weight: 700;
 }
-.rom-badge.gb   { background: rgba(0,255,65,0.12);   color: var(--sys-gb);   }
 .rom-badge.gbc  { background: rgba(124,252,0,0.12);   color: var(--sys-gbc);  }
 .rom-badge.gba  { background: rgba(255,215,0,0.12);   color: var(--sys-gba);  }
 .rom-badge.nes  { background: rgba(255,107,107,0.12); color: var(--sys-nes);  }
@@ -439,27 +437,6 @@ html, body {
 .selector-help-hint span { color: var(--gold); font-weight: 700; }
 
 
-.drive-setup-hint {
-  width: 100%; background: var(--surface);
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 10px; margin-top: 4px; position: relative; overflow: hidden;
-}
-.drive-setup-hint::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--gold), transparent);
-  opacity: 0.3;
-}
-.hint-title {
-  font-family: var(--font-pixel); font-size: 7px;
-  color: var(--gold); letter-spacing: 2px; margin-bottom: 6px;
-}
-.hint-body {
-  font-size: 7px; line-height: 1.9; color: var(--text-dim); letter-spacing: 0.5px;
-}
-.hint-body code { color: var(--green); font-weight: 700; }
-
-
 /* ══════════════════════════════════════════════════════════════
    EMULATOR SCREEN
    ══════════════════════════════════════════════════════════════ */
@@ -469,11 +446,7 @@ html, body {
   background: #000; position: fixed; top: 0; left: 0;
 }
 
-/* Floating toast — shows ROM title + save/slot status briefly, then fades.
-   position:fixed here is intentional: the rotated #emulator-screen
-   (landscape mode) establishes its own containing block for fixed
-   descendants, so this stays correctly anchored post-rotation —
-   same trick #save-confirm already relies on below. */
+/* Floating toast — fades in on action, auto-hides */
 #emu-toast {
   position: fixed; top: 8px; left: 50%; transform: translateX(-50%);
   max-width: 90%; z-index: 30;
@@ -501,6 +474,43 @@ html, body {
   width: 100vw; flex: 1; background: #000;
   position: relative; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
+}
+
+/* ── ROM Options Overlay ── */
+#rom-options-overlay {
+  display: none; position: fixed; top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  background: rgba(4,4,8,0.96); z-index: 99997;
+  flex-direction: column; align-items: center;
+  justify-content: center; gap: 16px; padding: 20px;
+  backdrop-filter: blur(4px);
+}
+#rom-options-overlay.visible { display: flex; }
+.rom-options-title {
+  font-family: var(--font-pixel); font-size: 7px;
+  letter-spacing: 1px; color: var(--green);
+  text-align: center; max-width: 260px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 0 0 10px rgba(0,255,65,0.3);
+}
+#rom-options-list {
+  display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 220px;
+}
+.rom-option-item {
+  font-family: var(--font-mono); font-size: 10px;
+  letter-spacing: 1px; color: var(--text-dim);
+  padding: 10px 14px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--surface);
+  text-align: center; cursor: pointer;
+}
+.rom-option-item.selected {
+  color: var(--green); border-color: var(--green);
+  background: rgba(0,255,65,0.06);
+  box-shadow: 0 0 10px rgba(0,255,65,0.08);
+}
+.rom-options-hint {
+  font-family: var(--font-mono); font-size: 7px;
+  color: var(--text-mut); letter-spacing: 0.5px;
 }
 #emulator-wrapper canvas,
 #emulator-wrapper #canvas {

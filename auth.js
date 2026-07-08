@@ -38,6 +38,17 @@ document.addEventListener('keydown', (e) => {
 async function initAuth() {
   _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+  // ── Scope version gate ─────────────────────────────────────────────────────
+  // Increment APP_SCOPE_VERSION whenever OAuth scopes change.
+  // This clears the stored refresh token so users re-consent with new scopes.
+  const APP_SCOPE_VERSION = 'v2_file'; // drive → drive.file migration
+  if (localStorage.getItem('emu_scope_v') !== APP_SCOPE_VERSION) {
+    localStorage.removeItem('emu_rt');
+    localStorage.setItem('emu_scope_v', APP_SCOPE_VERSION);
+    dbgAuth('Scope version changed — cleared stored refresh token');
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   const { data: sessionData } = await _supabase.auth.getSession();
   const session = sessionData?.session;
 
@@ -128,10 +139,7 @@ async function signInWithGoogle() {
     const { error } = await _supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // ═══ CHANGED: drive.readonly → drive ═══
-        // Required so the app can write .sav files to the saves/ folder,
-        // including updates to saves the user imported from other emulators.
-        scopes: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.appdata',
+        scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata',
         redirectTo: window.location.href.split('#')[0].split('?')[0],
         queryParams: qParams,
       }
