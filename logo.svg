@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Deep Space/Console Background -->
+  <rect width="120" height="120" fill="#06060c"/>
+  
+  <!-- Subtle Grid Background -->
+  <pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse">
+    <rect width="12" height="12" fill="none" stroke="#1a1a30" stroke-width="0.5"/>
+  </pattern>
+  <rect width="120" height="120" fill="url(#grid)"/>
+
+  <!-- Glowing Aura -->
+  <circle cx="60" cy="55" r="45" fill="#00ff41" opacity="0.08"/>
+
+  <!-- Solid Cloud (representing CloudPhone environment) -->
+  <g fill="#181830">
+    <circle cx="42" cy="48" r="14"/>
+    <circle cx="60" cy="38" r="20"/>
+    <circle cx="78" cy="48" r="14"/>
+    <rect x="42" y="44" width="36" height="18"/>
+  </g>
+
+  <!-- Retro Gamepad (SNES structural style) -->
+  <rect x="18" y="52" width="84" height="38" rx="19" fill="#0c0c16" stroke="#00ff41" stroke-width="2"/>
+  <rect x="22" y="56" width="76" height="30" rx="15" fill="#111120" stroke="#1a1a30" stroke-width="1"/>
+  
+  <!-- D-Pad -->
+  <rect x="32" y="67" width="14" height="4" rx="0.5" fill="#00ff41"/>
+  <rect x="37" y="62" width="4" height="14" rx="0.5" fill="#00ff41"/>
+  
+  <!-- Start / Select -->
+  <rect x="53" y="74" width="6" height="2" rx="1" fill="#5c5c78" transform="rotate(-25 56 75)"/>
+  <rect x="63" y="74" width="6" height="2" rx="1" fill="#5c5c78" transform="rotate(-25 66 75)"/>
+  
+  <!-- Action Buttons (Matched to style.css system colors) -->
+  <circle cx="84" cy="75" r="3.5" fill="#ffd700"/> 
+  <circle cx="91" cy="68" r="3.5" fill="#ff6b6b"/> 
+  <circle cx="77" cy="68" r="3.5" fill="#60a5fa"/>
+  <circle cx="84" cy="61" r="3.5" fill="#7cfc00"/>
+  
+  <!-- Streaming/Cloud Connectivity Arcs -->
+  <path d="M 54 22 A 8 8 0 0 1 66 22" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M 50 16 A 14 14 0 0 1 70 16" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+</svg>
