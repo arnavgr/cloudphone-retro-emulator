@@ -263,7 +263,6 @@ function hideAuthScreen() { document.getElementById('auth-screen').style.display
 function showUserBar() {
   const bar = document.getElementById('auth-user-bar');
   if (!bar || !window.currentUser) return;
-  bar.querySelector('.auth-user-name').textContent = window.currentUser.name.toUpperCase();
   bar.style.display = 'flex';
 }
 
