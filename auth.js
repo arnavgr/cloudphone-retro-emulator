@@ -59,9 +59,15 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowUp')   { e.preventDefault(); _authMoveFocus(-1); return; }
 
   if (e.key === 'Enter') {
-    // A focused link (Privacy/Terms) navigates natively; anything else
-    // (including the login button, or nothing focused yet) signs in.
-    if (document.activeElement?.tagName === 'A') return;
+    const active = document.activeElement;
+    // CloudPhone relays the raw keydown but doesn't synthesize a native
+    // click from it, so a focused link never activates on its own —
+    // navigate explicitly, the same way the login button is handled below.
+    if (active?.tagName === 'A' && active.href) {
+      e.preventDefault();
+      window.location.href = active.href;
+      return;
+    }
     e.preventDefault();
     signInWithGoogle();
   }
