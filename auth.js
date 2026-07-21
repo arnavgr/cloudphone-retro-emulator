@@ -28,10 +28,48 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════
+// AUTH SCREEN — explicit keypad navigation
+// CloudPhone relays raw key presses to the page but provides no
+// spatial/focus navigation of its own — exactly like the ROM
+// selector screen in app.js, this screen must move focus (and
+// scroll it into view) itself in response to arrow keys, or focus
+// never leaves the first element and the page never scrolls.
+// ══════════════════════════════════════════════════════════════
+function _authFocusables() {
+  return [...document.querySelectorAll('#auth-screen [tabindex]')]
+    .filter(el => el.offsetParent !== null);
+}
+function _authMoveFocus(dir) {
+  const items = _authFocusables();
+  if (!items.length) return;
+  const cur = items.indexOf(document.activeElement);
+  let next = cur + dir;
+  if (next < 0) next = 0;
+  if (next >= items.length) next = items.length - 1;
+  const el = items[next];
+  if (el) { el.focus(); el.scrollIntoView({ block: 'nearest' }); }
+}
+
 document.addEventListener('keydown', (e) => {
   const authScreen = document.getElementById('auth-screen');
-  if (authScreen && window.getComputedStyle(authScreen).display !== 'none') {
-    if (e.key === 'Enter') { e.preventDefault(); signInWithGoogle(); }
+  if (!authScreen || window.getComputedStyle(authScreen).display === 'none') return;
+
+  if (e.key === 'ArrowDown') { e.preventDefault(); _authMoveFocus(1);  return; }
+  if (e.key === 'ArrowUp')   { e.preventDefault(); _authMoveFocus(-1); return; }
+
+  if (e.key === 'Enter') {
+    const active = document.activeElement;
+    // CloudPhone relays the raw keydown but doesn't synthesize a native
+    // click from it, so a focused link never activates on its own —
+    // navigate explicitly, the same way the login button is handled below.
+    if (active?.tagName === 'A' && active.href) {
+      e.preventDefault();
+      window.location.href = active.href;
+      return;
+    }
+    e.preventDefault();
+    signInWithGoogle();
   }
 });
 
@@ -263,7 +301,6 @@ function hideAuthScreen() { document.getElementById('auth-screen').style.display
 function showUserBar() {
   const bar = document.getElementById('auth-user-bar');
   if (!bar || !window.currentUser) return;
-  bar.querySelector('.auth-user-name').textContent = window.currentUser.name.toUpperCase();
   bar.style.display = 'flex';
 }
 
