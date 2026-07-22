@@ -38,6 +38,13 @@ function _resolveLandscape(sys) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// BIOS REGISTRY
+// ══════════════════════════════════════════════════════════════
+const BIOS_REGISTRY = {
+  pcsx_rearmed: [{ file: 'scph1001.bin', ejsVar: 'EJS_biosUrl', required: true }],
+};
+
+// ══════════════════════════════════════════════════════════════
 // CONTROLS
 // ══════════════════════════════════════════════════════════════
 function _pad(dpad, { a, b, x = '', y = '', start, select, l = '', r = '', l2 = '', r2 = '' }) {
@@ -143,24 +150,30 @@ const PICKER_API_KEY = 'AIzaSyBXEs-NFca5LOW0Y-mzn48hvTuCGR1pIF4';
 const GOOGLE_OAUTH_CLIENT_ID = '924408688373-brjd67ahhkib1s3d5cplpaamscb3loe1.apps.googleusercontent.com';
 
 // ── File classification ────────────────────────────────────────────────────────
-// Extension → system.
+// Known BIOS filenames — if a .bin file matches, it's a BIOS not a Genesis ROM.
+const BIOS_FILENAMES = new Set([
+  'scph1001.bin', 'scph5501.bin', 'scph5502.bin', 'scph5500.bin', 'scph101.bin',
+  'gba_bios.bin', 'bios.bin',
+]);
+// Extension → system. .bin handled separately in _classifyPickedFile.
 const SYSTEM_BY_EXT = {
   '.gb': 'gbc',  '.gbc': 'gbc',  '.gba': 'gba',
   '.nes': 'nes', '.sfc': 'snes', '.smc': 'snes',
   '.chd': 'psx', '.gg': 'gg',   '.sms': 'sms',
-  '.md': 'genesis', '.gen': 'genesis', '.bin': 'genesis',
+  '.md': 'genesis', '.gen': 'genesis',
 };
 
 // ══════════════════════════════════════════════════════════════
 // CACHE
 // romIndex is persisted to appDataFolder as JSON.
-// All Drive file IDs (ROMs, saves) live in the index —
+// All Drive file IDs (ROMs, BIOS, saves) live in the index —
 // no folder scanning ever happens at runtime.
 // ══════════════════════════════════════════════════════════════
 const _cache = {
-  romIndex:    null,  // { version, saveFolderId, roms[], saves[] }
+  romIndex:    null,  // { version, saveFolderId, roms[], bios[], saves[] }
   indexFileId: null,  // appDataFolder file ID for the index JSON
   romBlobs:    {},    // driveFileId → objectURL (cached ROM downloads)
+  biosBlobs:   {},    // driveFileId → objectURL (cached BIOS downloads)
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -373,8 +386,9 @@ window.onAuthSuccess = function(user) { _markTokenFresh(); if (typeof _origOnAut
 // ══════════════════════════════════════════════════════════════
 // ROM INDEX — appDataFolder
 // Single JSON blob storing all Drive file IDs.
-// Structure: { version, saveFolderId, roms[], saves[] }
+// Structure: { version, saveFolderId, roms[], bios[], saves[] }
 //   roms[]:  { id, name, file, system, core, label, cls, landscape }
+//   bios[]:  { id, file }
 //   saves[]: { id, romFile }  ← battery saves
 // ══════════════════════════════════════════════════════════════
 function _indexKey() {
@@ -382,7 +396,7 @@ function _indexKey() {
 }
 
 function _emptyIndex() {
-  return { version: 1, saveFolderId: null, roms: [], saves: [] };
+  return { version: 1, saveFolderId: null, roms: [], bios: [], saves: [] };
 }
 
 async function _loadRomIndex() {
@@ -402,9 +416,10 @@ async function _loadRomIndex() {
     if (!res.ok) throw new Error('Index DL failed: ' + res.status);
     _cache.romIndex = await res.json();
     _cache.romIndex.roms  = _cache.romIndex.roms  || [];
+    _cache.romIndex.bios  = _cache.romIndex.bios  || [];
     _cache.romIndex.saves = _cache.romIndex.saves || [];
 
-    dbg('ROM index: ' + _cache.romIndex.roms.length + ' ROMs / ' + _cache.romIndex.saves.length + ' saves');
+    dbg('ROM index: ' + _cache.romIndex.roms.length + ' ROMs / ' + _cache.romIndex.bios.length + ' BIOS / ' + _cache.romIndex.saves.length + ' saves');
     _rebuildRomsFromIndex();
     if (ROMS.length === 0) _showEmptyState(); else _buildRomList();
     
@@ -504,6 +519,17 @@ async function _ensureSaveFolder() {
 function _classifyPickedFile(name) {
   const lower = name.toLowerCase();
   const ext   = lower.slice(lower.lastIndexOf('.'));
+
+  // .bin is ambiguous: BIOS filenames win, otherwise Genesis ROM
+  if (ext === '.bin') {
+    return BIOS_FILENAMES.has(lower)
+      ? { type: 'bios', system: null }
+      : { type: 'rom',  system: 'genesis' };
+  }
+
+  // Check known BIOS filenames for other extensions
+  if (BIOS_FILENAMES.has(lower)) return { type: 'bios', system: null };
+
   const system = SYSTEM_BY_EXT[ext];
   if (!system) return { type: 'unknown', system: null };
   return { type: 'rom', system };
@@ -580,7 +606,7 @@ function _refreshDriveAuthForPicker() {
   });
 }
 
-// mode: 'roms' (add ROMs) | 'save' (import a .sav for one ROM)
+// mode: 'roms' (add ROMs + BIOS) | 'save' (import a .sav for one ROM)
 //
 // _pickerOpen gates the document-level keydown handler further down so that
 // arrow-key input isn't swallowed by the (still-focused) rom-list underneath
@@ -627,7 +653,7 @@ async function openPicker(mode = 'roms', forRom = null) {
       .setDeveloperKey(PICKER_API_KEY)
       .setAppId("924408688373")
       .setOrigin(window.location.origin)
-      .setTitle(mode === 'save' ? 'SELECT SAVE FILE for ' + (forRom?.name || '') : 'SELECT ROM FILES (multi-select)')
+      .setTitle(mode === 'save' ? 'SELECT SAVE FILE for ' + (forRom?.name || '') : 'SELECT ROM & BIOS FILES (multi-select)')
       .addView(view)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
       .enableFeature(google.picker.Feature.NAV_HIDDEN)   // cleaner nav, folders double-click to enter
@@ -673,7 +699,7 @@ async function _processPickedFiles(docs, mode, forRom) {
     return;
   }
 
-  // ── ROM mode ─────────────────────────────────────────────────
+  // ── ROM / BIOS mode ──────────────────────────────────────────
   let added = 0, updated = 0, skipped = 0;
   const skippedNames = [];
 
@@ -681,6 +707,14 @@ async function _processPickedFiles(docs, mode, forRom) {
     const { type, system } = _classifyPickedFile(doc.name);
 
     if (type === 'unknown') { skipped++; skippedNames.push(doc.name); continue; }
+
+    if (type === 'bios') {
+      const existing = _cache.romIndex.bios.find(b => b.file.toLowerCase() === doc.name.toLowerCase());
+      if (existing) { existing.id = doc.id; updated++; }
+      else           { _cache.romIndex.bios.push({ id: doc.id, file: doc.name }); added++; }
+      dbg('BIOS: ' + doc.name + ' → ' + doc.id);
+      continue;
+    }
 
     if (type === 'rom') {
       const sys = SYSTEMS[system];
@@ -713,6 +747,33 @@ async function _processPickedFiles(docs, mode, forRom) {
   if (updated) parts.push(updated + ' UPDATED');
   if (skipped) parts.push(skipped + ' SKIPPED');
   _setSelectorStatus(parts.join(' · ') || 'NO CHANGES');
+}
+
+// ══════════════════════════════════════════════════════════════
+// BIOS LOADING — from index
+// ══════════════════════════════════════════════════════════════
+async function _loadBios(core) {
+  const required = BIOS_REGISTRY[core];
+  if (!required) return true;
+  if (!_cache.romIndex) return false;
+
+  let allOk = true;
+  for (const { file, ejsVar, required: req } of required) {
+    const entry = _cache.romIndex.bios.find(b => b.file.toLowerCase() === file.toLowerCase());
+    if (!entry) {
+      dbg((req ? 'REQUIRED' : 'optional') + ' BIOS missing: ' + file);
+      if (req) allOk = false;
+      continue;
+    }
+    try {
+      window[ejsVar] = await driveDownloadBlob(entry.id, _cache.biosBlobs, 'BIOS ' + file);
+      dbg('BIOS set ' + ejsVar + ' ← ' + file);
+    } catch (err) {
+      dbg('BIOS DL ERR ' + file + ': ' + err.message);
+      if (req) allOk = false;
+    }
+  }
+  return allOk;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -960,7 +1021,8 @@ function _showEmptyState() {
         directly from your Google Drive.<br><br>
         <span style="color:var(--text-mut);font-size:7px;line-height:2;">
           Select any .gb .gbc .gba .nes .sfc<br>
-          .chd .gg .sms .md .bin files.
+          .chd .gg .sms .md files — or BIOS<br>
+          files like scph1001.bin for PS1.
         </span>
       </div>`;
   }
@@ -1291,6 +1353,7 @@ async function _bootEJS(rom, romUrl) {
   dbg('Canvas: ' + window.EJS_canvasWidth + 'x' + window.EJS_canvasHeight);
   window.EJS_disableDatabases = true;
   window.EJS_core_options     = { video_filter: 'none' };
+  await _loadBios(rom.core);
 
   const onGameStart = () => {
     const loadingMsg = document.getElementById('loading-msg');
@@ -1331,6 +1394,7 @@ async function _bootEJS(rom, romUrl) {
       startOnLoad: true, muted: true, color: '#00ff41', backgroundColor: '#000000',
       defaultControls, buttons, onGameStart,
     };
+    if (window.EJS_biosUrl) config.biosUrl = window.EJS_biosUrl;
     try { new window.EJS(playerEl, config); dbg('EJS instance created'); }
     catch (e) { dbg('EJS constructor ERR: ' + e.message); }
   } else {
