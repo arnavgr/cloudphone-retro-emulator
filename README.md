@@ -9,7 +9,7 @@ This project runs entirely in the browser, leveraging **EmulatorJS** for hardwar
 *   **Zero-Server Architecture & Bring Your Own ROM (BYOR):** ROMs are streamed directly from your personal Google Drive using Google Picker. No game files are ever hosted or stored on application servers.
 *   **Keypad Optimized UI:** Custom control mappings designed for physical T9/feature-phone keypads, bypassing the need for touch screens or external gamepads.
 *   **Dynamic Screen Support:** Auto-detects screen resolution to handle both standard (240×320) and small (128×160) displays, dynamically switching rendering orientations.
-*   **Picker-Based ROM Management:** Select ROMs directly from your Drive using Google Picker. The app remembers every file you pick — no re-selection needed on future visits.
+*   **Picker-Based ROM Management:** Select ROMs and BIOS files directly from your Drive using Google Picker. The app remembers every file you pick — no re-selection needed on future visits.
 *   **Visible In-Game Saves:** In-game saves (SRAM/battery saves) are stored as `.sav` files in a `cloudphone-emulator-saves/` folder the app creates in your Drive. You can see them, back them up, and replace them with saves from other emulators at any time.
 *   **Cloud Save States:** Save states (full emulator snapshots) are synced to a hidden `appDataFolder` in Google Drive, allowing you to pick up exactly where you left off.
 *   **Save Indicators:** Green dots next to ROM names show which games have an in-game save file.
@@ -37,6 +37,10 @@ The app never touches your Drive except to read the files you pick and write sav
 
 Press **`+`** at any time to open Picker again. Files you've already added are deduplicated automatically — picking the same file twice just updates the reference.
 
+### Adding BIOS Files
+
+BIOS files are picked the same way as ROMs — just press **`+`** and select the BIOS file (e.g. `scph1001.bin` for PS1). The app recognises known BIOS filenames automatically and stores them separately from ROMs. If you launch a system that needs a BIOS and none is found, the app will prompt you.
+
 ### Supported File Extensions
 
 | System | Extensions |
@@ -48,7 +52,9 @@ Press **`+`** at any time to open Picker again. Files you've already added are d
 | PlayStation 1 | `.chd` |
 | Game Gear | `.gg` |
 | Master System | `.sms` |
-| Genesis / Mega Drive | `.md`, `.gen`, `.bin` |
+| Genesis / Mega Drive | `.md`, `.gen`, `.bin`* |
+
+*`.bin` files are classified as Genesis ROMs unless the filename matches a known BIOS name (e.g. `scph1001.bin`), in which case they are treated as BIOS files.
 
 ---
 
@@ -108,7 +114,7 @@ Press `0` in-game to open the full controls reference. Default mappings:
 *   **Auth:** Supabase (Google OAuth provider).
 *   **Token Refresh:** Cloudflare Worker (holds Google client secret server-side).
 *   **File Selection:** Google Picker API.
-*   **Storage:** Google Drive API v3 — ROM streaming by file ID, visible battery saves, hidden AppData save states.
+*   **Storage:** Google Drive API v3 — ROM streaming by file ID, Picker-indexed BIOS, visible battery saves, hidden AppData save states.
 *   **ROM Index:** JSON blob in `appDataFolder` mapping Drive file IDs to ROM metadata. No folder scanning at runtime.
 
 ---
@@ -121,7 +127,7 @@ The app requests two scopes:
 
 | Scope | Why |
 | :--- | :--- |
-| `drive.file` | Grants access to files the app creates (battery saves) and files the user explicitly opens through Google Picker (ROMs, imported saves). No access to any other Drive files. |
+| `drive.file` | Grants access to files the app creates (battery saves) and files the user explicitly opens through Google Picker (ROMs, BIOS, imported saves). No access to any other Drive files. |
 | `drive.appdata` | Used to store the ROM index and save states in a hidden, app-only folder. No other app can access this folder. |
 
 ### Why `drive.file` is the right scope
@@ -144,7 +150,7 @@ The app **never deletes** any Drive file. The app **never reads or writes** any 
 
 ### Privacy
 
-*   ROMs and in-game saves remain in your private Google Drive at all times.
+*   ROMs, BIOS files, and in-game saves remain in your private Google Drive at all times.
 *   No game files are uploaded to or stored on any application server.
 *   Save states and the ROM index are stored in `appDataFolder`, which is hidden from normal Drive browsing and inaccessible to other apps.
 *   Supabase is used only for authentication. All data queries are protected by Row Level Security (RLS).
