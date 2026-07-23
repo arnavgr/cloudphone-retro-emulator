@@ -177,9 +177,9 @@ const BIOS_REGISTRY = {
   }],
 };
 
-// Trim + lowercase, used for case/space-insensitive name comparisons.
+// Trim + lowercase + strip all spaces, used for case/space-insensitive name comparisons.
 function _normName(name) {
-  return (name || '').trim().toLowerCase();
+  return (name || '').trim().toLowerCase().replace(/\s+/g, '');
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -436,6 +436,25 @@ async function _loadRomIndex() {
     _cache.romIndex.roms  = _cache.romIndex.roms  || [];
     _cache.romIndex.saves = _cache.romIndex.saves || [];
     _cache.romIndex.bios  = _cache.romIndex.bios  || [];
+
+    // Auto-fix: move any misclassified BIOS files from roms[] to bios[]
+    const misclassifiedRoms = _cache.romIndex.roms.filter(r => {
+      const { type } = _classifyPickedFile(r.file);
+      return type === 'bios';
+    });
+    if (misclassifiedRoms.length > 0) {
+      _cache.romIndex.roms = _cache.romIndex.roms.filter(r => {
+        const { type } = _classifyPickedFile(r.file);
+        return type !== 'bios';
+      });
+      for (const rom of misclassifiedRoms) {
+        const existing = _cache.romIndex.bios.find(b => _normName(b.file) === _normName(rom.file));
+        if (existing) { existing.id = rom.id; }
+        else          { _cache.romIndex.bios.push({ id: rom.id, file: rom.file }); }
+      }
+      dbg('Auto-fixed ' + misclassifiedRoms.length + ' misclassified BIOS file(s)');
+      await _saveRomIndex();
+    }
 
     dbg('ROM index: ' + _cache.romIndex.roms.length + ' ROMs / ' + _cache.romIndex.saves.length + ' saves / ' + _cache.romIndex.bios.length + ' BIOS');
     _rebuildRomsFromIndex();
@@ -702,6 +721,20 @@ async function _processPickedFiles(docs, mode, forRom) {
   if (mode === 'save' && forRom) {
     if (!docs.length) return;
     const doc = docs[0];
+    const { type } = _classifyPickedFile(doc.name);
+    
+    // Intercept if the user accidentally tried to import a BIOS file as a save
+    if (type === 'bios') {
+      _cache.romIndex.roms = _cache.romIndex.roms.filter(r => r.id !== doc.id && _normName(r.file) !== _normName(doc.name));
+      const existing = _cache.romIndex.bios.find(b => _normName(b.file) === _normName(doc.name));
+      if (existing) { existing.id = doc.id; }
+      else          { _cache.romIndex.bios.push({ id: doc.id, file: doc.name }); }
+      await _saveRomIndex();
+      _setSelectorStatus('BIOS IMPORTED — RESTART GAME');
+      dbg('BIOS imported via Save picker: ' + doc.name + ' → ' + doc.id);
+      return;
+    }
+    
     // Replace existing save entry for this ROM
     _cache.romIndex.saves = _cache.romIndex.saves.filter(s => s.romFile !== forRom.file);
     _cache.romIndex.saves.push({ id: doc.id, romFile: forRom.file });
@@ -718,10 +751,14 @@ async function _processPickedFiles(docs, mode, forRom) {
 
   for (const doc of docs) {
     const { type, system } = _classifyPickedFile(doc.name);
+    dbg('Classifying ' + doc.name + ' -> ' + type + (system ? ' (' + system + ')' : ''));
 
     if (type === 'unknown') { skipped++; skippedNames.push(doc.name); continue; }
 
     if (type === 'bios') {
+      // If it was previously in roms[] (misclassified), remove it!
+      _cache.romIndex.roms = _cache.romIndex.roms.filter(r => r.id !== doc.id && _normName(r.file) !== _normName(doc.name));
+      
       const existing = _cache.romIndex.bios.find(b => _normName(b.file) === _normName(doc.name));
       if (existing) { existing.id = doc.id; updated++; }
       else          { _cache.romIndex.bios.push({ id: doc.id, file: doc.name }); added++; }
