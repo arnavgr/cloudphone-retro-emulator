@@ -151,16 +151,48 @@ const SYSTEM_BY_EXT = {
   '.md': 'genesis', '.gen': 'genesis', '.bin': 'genesis',
 };
 
+// ── BIOS classification & registry ───────────────────────────────────────────
+// Recognized SCPH regional revisions plus a couple of generic BIOS names.
+const PSX_BIOS_NAMES = [
+  'scph1001.bin', 'scph1000.bin', 'scph1002.bin', 'scph101.bin',
+  'scph5500.bin', 'scph5501.bin', 'scph5502.bin',
+  'scph7000.bin', 'scph7001.bin', 'scph7002.bin', 'scph9001.bin',
+];
+
+const BIOS_FILENAMES = new Set([
+  ...PSX_BIOS_NAMES,
+  'gba_bios.bin', 'bios.bin',
+]);
+
+// Which cores need which BIOS files (case/space-insensitive matching).
+// expectedBytes is used to warn on truncated/corrupted dumps that can boot
+// fine but break BIOS-level features like the memory-card manager.
+const BIOS_REGISTRY = {
+  pcsx_rearmed: [{
+    names: PSX_BIOS_NAMES,
+    preferred: 'scph1001.bin',
+    ejsVar: 'EJS_biosUrl',
+    required: true,
+    expectedBytes: 524288,      // 512KB standard PS1 BIOS size
+  }],
+};
+
+// Trim + lowercase, used for case/space-insensitive name comparisons.
+function _normName(name) {
+  return (name || '').trim().toLowerCase();
+}
+
 // ══════════════════════════════════════════════════════════════
 // CACHE
 // romIndex is persisted to appDataFolder as JSON.
-// All Drive file IDs (ROMs, saves) live in the index —
+// All Drive file IDs (ROMs, saves, BIOS) live in the index —
 // no folder scanning ever happens at runtime.
 // ══════════════════════════════════════════════════════════════
 const _cache = {
-  romIndex:    null,  // { version, saveFolderId, roms[], saves[] }
+  romIndex:    null,  // { version, saveFolderId, roms[], saves[], bios[] }
   indexFileId: null,  // appDataFolder file ID for the index JSON
   romBlobs:    {},    // driveFileId → objectURL (cached ROM downloads)
+  biosBlobs:   {},    // driveFileId → objectURL (cached BIOS downloads)
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -237,7 +269,6 @@ async function driveCreateFolder(name, parentId) {
   return data.id || null;
 }
 
-// Download a Drive file by ID, cache the object URL.
 // Download a Drive file by ID, cache the object URL.
 // Retries up to 3× with forced token refresh on auth errors.
 async function driveDownloadBlob(fileId, cacheMap, label = 'file') {
@@ -373,16 +404,17 @@ window.onAuthSuccess = function(user) { _markTokenFresh(); if (typeof _origOnAut
 // ══════════════════════════════════════════════════════════════
 // ROM INDEX — appDataFolder
 // Single JSON blob storing all Drive file IDs.
-// Structure: { version, saveFolderId, roms[], saves[] }
+// Structure: { version, saveFolderId, roms[], saves[], bios[] }
 //   roms[]:  { id, name, file, system, core, label, cls, landscape }
 //   saves[]: { id, romFile }  ← battery saves
+//   bios[]:  { id, file }     ← BIOS files
 // ══════════════════════════════════════════════════════════════
 function _indexKey() {
   return (window.currentUser?.id || 'anon') + '_rom_index_v1';
 }
 
 function _emptyIndex() {
-  return { version: 1, saveFolderId: null, roms: [], saves: [] };
+  return { version: 1, saveFolderId: null, roms: [], saves: [], bios: [] };
 }
 
 async function _loadRomIndex() {
@@ -403,8 +435,9 @@ async function _loadRomIndex() {
     _cache.romIndex = await res.json();
     _cache.romIndex.roms  = _cache.romIndex.roms  || [];
     _cache.romIndex.saves = _cache.romIndex.saves || [];
+    _cache.romIndex.bios  = _cache.romIndex.bios  || [];
 
-    dbg('ROM index: ' + _cache.romIndex.roms.length + ' ROMs / ' + _cache.romIndex.saves.length + ' saves');
+    dbg('ROM index: ' + _cache.romIndex.roms.length + ' ROMs / ' + _cache.romIndex.saves.length + ' saves / ' + _cache.romIndex.bios.length + ' BIOS');
     _rebuildRomsFromIndex();
     if (ROMS.length === 0) _showEmptyState(); else _buildRomList();
     
@@ -502,8 +535,14 @@ async function _ensureSaveFolder() {
 // FILE CLASSIFICATION
 // ══════════════════════════════════════════════════════════════
 function _classifyPickedFile(name) {
-  const lower = name.toLowerCase();
+  const lower = _normName(name);
   const ext   = lower.slice(lower.lastIndexOf('.'));
+  if (ext === '.bin') {
+    return BIOS_FILENAMES.has(lower)
+      ? { type: 'bios', system: null }
+      : { type: 'rom',  system: 'genesis' };
+  }
+  if (BIOS_FILENAMES.has(lower)) return { type: 'bios', system: null };
   const system = SYSTEM_BY_EXT[ext];
   if (!system) return { type: 'unknown', system: null };
   return { type: 'rom', system };
@@ -682,6 +721,14 @@ async function _processPickedFiles(docs, mode, forRom) {
 
     if (type === 'unknown') { skipped++; skippedNames.push(doc.name); continue; }
 
+    if (type === 'bios') {
+      const existing = _cache.romIndex.bios.find(b => _normName(b.file) === _normName(doc.name));
+      if (existing) { existing.id = doc.id; updated++; }
+      else          { _cache.romIndex.bios.push({ id: doc.id, file: doc.name }); added++; }
+      dbg('BIOS: ' + doc.name + ' → ' + doc.id);
+      continue;
+    }
+
     if (type === 'rom') {
       const sys = SYSTEMS[system];
       if (!sys) { skipped++; skippedNames.push(doc.name); continue; }
@@ -689,7 +736,7 @@ async function _processPickedFiles(docs, mode, forRom) {
       const byId   = _cache.romIndex.roms.find(r => r.id === doc.id);
       if (byId) { updated++; continue; }
 
-      const byName = _cache.romIndex.roms.find(r => r.file.toLowerCase() === doc.name.toLowerCase());
+      const byName = _cache.romIndex.roms.find(r => _normName(r.file) === _normName(doc.name));
       if (byName) { byName.id = doc.id; updated++; continue; }
 
       const displayName = doc.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
@@ -777,6 +824,54 @@ async function _cloudBatteryDownload(romFile) {
   } catch (err) { dbg('Battery DL ERR: ' + err.message); return null; }
 }
 
+// ── BIOS loader ───────────────────────────────────────────────────────────
+// Looks up the BIOS file(s) declared in BIOS_REGISTRY for the given core,
+// downloads them from Drive, assigns the object URL to the matching EJS_*
+// global, and runs an optional size sanity-check (a truncated/corrupted
+// dump is a classic cause of "boots fine, memory card breaks").
+//
+// Returns true if every *required* BIOS was found and downloaded; false
+// otherwise. Callers must check this return value — silently continuing
+// without a required BIOS leaves window.EJS_biosUrl unset, which EmulatorJS
+// treats as "no BIOS" and lets pcsx_rearmed boot anyway via its internal
+// HLE. That fallback runs the game but breaks BIOS-level services like the
+// memory-card driver — exactly the "slot 1 fails to load" symptom.
+async function _loadBios(core) {
+  const required = BIOS_REGISTRY[core];
+  if (!required) return true;
+  if (!_cache.romIndex) return false;
+
+  let allOk = true;
+  for (const { names, preferred, ejsVar, required: req, expectedBytes } of required) {
+    const entry = _cache.romIndex.bios.find(b => names.some(n => _normName(b.file) === _normName(n)));
+    if (!entry) {
+      dbg((req ? 'REQUIRED' : 'optional') + ' BIOS missing: ' + (preferred || names[0]));
+      if (req) allOk = false;
+      continue;
+    }
+    try {
+      const url = await driveDownloadBlob(entry.id, _cache.biosBlobs, 'BIOS ' + entry.file);
+      window[ejsVar] = url;
+      dbg('BIOS set ' + ejsVar + ' ← ' + entry.file);
+
+      if (expectedBytes) {
+        try {
+          const blob = await (await fetch(url)).blob(); // local blob: URL — no network hit
+          if (blob.size !== expectedBytes) {
+            dbg('WARNING: BIOS ' + entry.file + ' is ' + blob.size + 'B, expected '
+              + expectedBytes + 'B — file may be truncated/corrupted. Boot can still '
+              + 'succeed while BIOS-level features like the memory card manager misbehave.');
+          }
+        } catch (_) { /* sanity check only, non-fatal */ }
+      }
+    } catch (err) {
+      dbg('BIOS DL ERR ' + (entry?.file || preferred) + ': ' + err.message);
+      if (req) allOk = false;
+    }
+  }
+  return allOk;
+}
+
 async function _cloudBatteryUpload(romFile, bytes) {
   if (!_cache.romIndex) return false;
   await _ensureFreshToken();
@@ -819,6 +914,7 @@ async function _extractAndUploadBattery(rom) {
     if (!srm?.byteLength) return;
     const isBlank = [...srm.slice(0, 64)].every(b => b === 0x00 || b === 0xFF);
     if (isBlank) { dbg('Battery extract: blank SRAM, skipping'); return; }
+    dbg('Battery extract: ' + srm.byteLength + 'B, uploading');
     await _cloudBatteryUpload(rom.file, srm);
   } catch (err) { dbg('_extractAndUploadBattery ERR: ' + err.message); }
 }
@@ -1292,6 +1388,28 @@ async function _bootEJS(rom, romUrl) {
   window.EJS_disableDatabases = true;
   window.EJS_core_options     = { video_filter: 'none' };
 
+  // ── BIOS load + required-BIOS guard ───────────────────────────
+  // _loadBios returns false when a *required* BIOS can't be found or
+  // downloaded. If we don't bail here, window.EJS_biosUrl stays unset,
+  // EmulatorJS doesn't pass biosUrl into the core config, and pcsx_rearmed
+  // silently falls back to its HLE BIOS. That fallback runs the game but
+  // breaks BIOS-level services (memory-card driver) — exactly the
+  // "slot 1 fails to load" symptom. Refuse to boot instead.
+  const biosOk = await _loadBios(rom.core);
+  if (!biosOk) {
+    dbg('Boot aborted: required BIOS unavailable for core ' + rom.core);
+    const lm = document.getElementById('loading-msg');
+    if (lm) {
+      lm.innerHTML = 'REQUIRED BIOS NOT FOUND<br>'
+        + '<span style="font-size:7px;color:#888;max-width:240px;display:inline-block;line-height:1.6;margin-top:8px;">'
+        + 'This system needs a BIOS file added via +. Check it\'s still present in Drive.'
+        + '</span><br><span style="font-size:8px;color:#555;margin-top:8px;">Press RSK to exit</span>';
+      lm.style.display = 'flex';
+    }
+    _setSaveStatus('BIOS ERR', '');
+    return;
+  }
+
   const onGameStart = () => {
     const loadingMsg = document.getElementById('loading-msg');
     if (loadingMsg) loadingMsg.style.display = 'none';
@@ -1331,7 +1449,8 @@ async function _bootEJS(rom, romUrl) {
       startOnLoad: true, muted: true, color: '#00ff41', backgroundColor: '#000000',
       defaultControls, buttons, onGameStart,
     };
-    try { new window.EJS(playerEl, config); dbg('EJS instance created'); }
+    if (window.EJS_biosUrl) config.biosUrl = window.EJS_biosUrl;
+    try { new window.EJS(playerEl, config); dbg('EJS instance created' + (config.biosUrl ? ' (with BIOS)' : ' (no BIOS)')); }
     catch (e) { dbg('EJS constructor ERR: ' + e.message); }
   } else {
     window.EJS_player         = '#emulator-wrapper';
@@ -1345,6 +1464,7 @@ async function _bootEJS(rom, romUrl) {
     window.EJS_onGameStart    = onGameStart;
     window.EJS_defaultControls = defaultControls;
     window.EJS_Buttons        = buttons;
+    // biosUrl is set via window.EJS_biosUrl by _loadBios (if applicable)
     const script = document.createElement('script');
     script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
     script.className = 'ejs-script';
