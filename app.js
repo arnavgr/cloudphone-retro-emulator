@@ -2084,7 +2084,7 @@ function _renderPortraitHints() {
     .join('');
 }
 
-function ensureLoadingMsg() {
+function _ensureLoadingMsg() {
   let loadMsg = document.getElementById('loading-msg');
 
   if (!loadMsg) {
