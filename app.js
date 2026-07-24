@@ -234,31 +234,18 @@ function _genericKeybinds() {
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 
-// Folder created by the app (drive.file) for manual exports only.
 const SAVE_FOLDER_NAME = 'cloudphone-emulator-saves';
 
-// Google Picker API key
 const PICKER_API_KEY = 'AIzaSyBXEs-NFca5LOW0Y-mzn48hvTuCGR1pIF4';
-
-// Google OAuth Web Client ID — same Cloud project as PICKER_API_KEY / setAppId.
 const GOOGLE_OAUTH_CLIENT_ID = '924408688373-brjd67ahhkib1s3d5cplpaamscb3loe1.apps.googleusercontent.com';
 
-// Known BIOS filenames — if a .bin file matches, it's a BIOS not a Genesis ROM.
 const BIOS_FILENAMES = new Set([
-  // North America (NTSC-U)
   'scph1001.bin', 'scph5501.bin', 'scph7001.bin', 'scph7501.bin', 'scph101.bin',
-
-  // Europe (PAL)
   'scph1002.bin', 'scph5502.bin', 'scph7002.bin', 'scph7502.bin', 'scph102.bin',
-
-  // Japan (NTSC-J)
   'scph1000.bin', 'scph3000.bin', 'scph5000.bin', 'scph5500.bin', 'scph7000.bin', 'scph100.bin',
-
-  // PSP Universal (PCSX ReARMed preferred)
   'psxonpsp660.bin'
 ]);
 
-// Extension → system. .bin handled separately in _classifyPickedFile.
 const SYSTEM_BY_EXT = {
   '.gb': 'gbc',
   '.gbc': 'gbc',
@@ -275,15 +262,12 @@ const SYSTEM_BY_EXT = {
 
 // ══════════════════════════════════════════════════════════════
 // CACHE
-// romIndex is persisted to appDataFolder as JSON.
-// All Drive file IDs (ROMs, BIOS, saves) live in the index —
-// no folder scanning ever happens at runtime.
 // ══════════════════════════════════════════════════════════════
 const _cache = {
-  romIndex: null,   // { version, saveFolderId, roms[], bios[], saves[] }
-  indexFileId: null, // appDataFolder file ID for the index JSON
-  romBlobs: {},     // driveFileId → objectURL
-  biosBlobs: {},    // driveFileId → objectURL
+  romIndex: null,
+  indexFileId: null,
+  romBlobs: {},
+  biosBlobs: {},
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -300,8 +284,20 @@ let _currentRom = null;
 let _saveConfirmPending = false;
 let _isLandscape = false;
 let _gapiReady = false;
+
 let _romOptionsIndex = 0;
 let _romOptions = [];
+
+let _localRoms = [];
+let _guestBatterySaves = {};
+let _guestSaveExported = false;
+let _guestExitPromptOpen = false;
+
+window.APP_MODE = window.APP_MODE || 'drive';
+
+function _isGuest() {
+  return window.APP_MODE === 'guest';
+}
 
 const _log = [];
 
@@ -311,6 +307,7 @@ const _log = [];
 function dbg(msg) {
   const ts = new Date().toTimeString().slice(0, 8);
   _log.push('[' + ts + '] ' + msg);
+
   if (_log.length > 200) _log.shift();
 
   const el = document.getElementById('debug-log');
@@ -326,6 +323,7 @@ function toggleDebug() {
   if (!el) {
     el = document.createElement('div');
     el.id = 'debug-overlay';
+
     el.style.cssText =
       'position:fixed;top:0;left:0;z-index:999999;display:flex;flex-direction:column;background:rgba(4,4,8,0.97);border:1px solid #00ff41;padding:0;font-family:monospace;color:#00ff41;' +
       (_isLandscape
@@ -346,6 +344,7 @@ function toggleDebug() {
 
   if (!isVisible) {
     const logEl = document.getElementById('debug-log');
+
     if (logEl) {
       logEl.textContent = _log.join('\n') || 'No logs yet.';
       setTimeout(() => {
@@ -363,8 +362,6 @@ function setLandscape(on) {
 
 // ══════════════════════════════════════════════════════════════
 // DRIVE API HELPERS
-// Only the primitives needed with drive.file + drive.appdata.
-// No folder scanning — everything goes through file IDs in the index.
 // ══════════════════════════════════════════════════════════════
 async function _driveGet(path) {
   const res = await window.driveApiFetch(DRIVE_API + path);
@@ -393,8 +390,6 @@ async function driveCreateFolder(name, parentId) {
   return data.id || null;
 }
 
-// Download a Drive file by ID, cache the object URL.
-// Retries up to 3× with forced token refresh on auth errors.
 async function driveDownloadBlob(fileId, cacheMap, label = 'file') {
   if (cacheMap[fileId]) return cacheMap[fileId];
 
@@ -409,19 +404,19 @@ async function driveDownloadBlob(fileId, cacheMap, label = 'file') {
         if (!buf || buf.byteLength === 0) throw new Error('Empty response body');
 
         dbg('Downloaded ' + label + ' (' + fileId + '): ' + buf.byteLength + 'B');
+
         const url = URL.createObjectURL(new Blob([buf], { type: 'application/octet-stream' }));
         cacheMap[fileId] = url;
         return url;
       }
 
-      // 404 → file gone from Drive. Don't retry; surface clearly.
       if (res.status === 404) {
-        throw new Error('File not found in Drive (404). It may have been deleted or moved. Open * → REMOVE FROM LIST, then re-add it with +.');
+        throw new Error('File not found in Drive (404). It may have been deleted or moved. Open * → REMOVE ROM, then re-add it with +.');
       }
 
-      // Auth errors → force token refresh and retry
       if (res.status === 401 || res.status === 403) {
         dbg(label + ' download auth ' + res.status + ' (attempt ' + (attempt + 1) + ') — forcing token refresh');
+
         window._providerToken = null;
 
         const fresh = await window.getDriveToken();
@@ -432,17 +427,14 @@ async function driveDownloadBlob(fileId, cacheMap, label = 'file') {
         continue;
       }
 
-      // Other 5xx / network → retry with backoff
       if (res.status >= 500) {
         lastErr = new Error('Drive server error ' + res.status);
         await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
         continue;
       }
 
-      // Anything else — bail
       throw new Error('Drive download HTTP ' + res.status);
     } catch (err) {
-      // driveApiFetch itself can throw (network, INSUFFICIENT_PERMISSIONS, etc.)
       if (err.message === 'INSUFFICIENT_PERMISSIONS') {
         throw new Error('Insufficient permissions. Sign out and sign in again, then re-pick the file with +.');
       }
@@ -459,9 +451,9 @@ async function driveDownloadBlob(fileId, cacheMap, label = 'file') {
   throw lastErr || new Error(label + ' download failed');
 }
 
-// appDataFolder operations (drive.appdata scope — save states + index).
 async function driveFindAppFile(filename) {
   const q = encodeURIComponent(`name='${filename}' and trashed=false`);
+
   const res = await window.driveApiFetch(
     `${DRIVE_API}/files?spaces=appDataFolder&q=${q}&fields=files(id)&pageSize=1`
   );
@@ -485,6 +477,7 @@ async function driveWriteAppFile(filename, bytes, existingId = null) {
         body: blob
       }
     );
+
     return res.ok;
   }
 
@@ -516,10 +509,9 @@ async function driveWriteAppFile(filename, bytes, existingId = null) {
   return res.ok;
 }
 
-// Write bytes to a visible Drive file the app owns (drive.file).
-// Kept for compatibility / manual export only.
 async function _driveWriteOwnedFile(fileId, bytes) {
   const blob = new Blob([bytes], { type: 'application/octet-stream' });
+
   const res = await window.driveApiFetch(
     `${DRIVE_UPLOAD}/files/${fileId}?uploadType=media`,
     {
@@ -528,10 +520,10 @@ async function _driveWriteOwnedFile(fileId, bytes) {
       body: blob
     }
   );
+
   return res.ok;
 }
 
-// Create a new visible file in a folder the app owns.
 async function _driveCreateOwnedFile(filename, parentId, bytes) {
   const boundary = 'emu_battery_boundary';
 
@@ -567,9 +559,7 @@ async function _driveCreateOwnedFile(filename, parentId, bytes) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// SAFE BATTERY SAVE STORAGE
-// Active save + backup live in appDataFolder.
-// The user-picked .sav is treated as a source file, never auto-overwritten.
+// SAFE BATTERY SAVE STORAGE HELPERS
 // ══════════════════════════════════════════════════════════════
 function _safeSaveName(name) {
   return String(name || 'save').replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -620,7 +610,6 @@ async function _driveDeleteFile(fileId) {
   }
 }
 
-// Returns file ID, not just boolean
 async function _writeAppFileBytes(filename, bytes, existingId = null) {
   const blob = new Blob([bytes], { type: 'application/octet-stream' });
 
@@ -716,6 +705,7 @@ async function _migrateSavesToAppData() {
           s.activeId = await _writeAppFileBytes(_batteryActiveName(s.romFile), bytes, null) || null;
           s.backupId = await _writeAppFileBytes(_batteryBackupName(s.romFile), bytes, null) || null;
           s.migratedAt = Date.now();
+
           dbg('Migrated old battery save to appData for: ' + s.romFile);
         }
       } catch (err) {
@@ -738,11 +728,13 @@ let _tokenLastRefreshed = Date.now();
 
 async function _ensureFreshToken() {
   const AGE_MS = Date.now() - _tokenLastRefreshed;
+
   if (AGE_MS < 50 * 60 * 1000) return;
 
   dbg('Token age: ' + Math.round(AGE_MS / 60000) + 'min — proactive refresh');
 
   window._providerToken = null;
+
   const token = await window.getDriveToken();
 
   if (token) {
@@ -757,19 +749,8 @@ function _markTokenFresh() {
   _tokenLastRefreshed = Date.now();
 }
 
-const _origOnAuthSuccess = window.onAuthSuccess;
-window.onAuthSuccess = function(user) {
-  _markTokenFresh();
-  if (typeof _origOnAuthSuccess === 'function') _origOnAuthSuccess(user);
-};
-
 // ══════════════════════════════════════════════════════════════
 // ROM INDEX — appDataFolder
-// Single JSON blob storing all Drive file IDs.
-// Structure: { version, saveFolderId, roms[], bios[], saves[] }
-//   roms[]:  { id, name, file, system, core, label, cls, landscape }
-//   bios[]:  { id, file }
-//   saves[]: { romFile, v, activeId, backupId, sourceId, legacyId, ... }
 // ══════════════════════════════════════════════════════════════
 function _indexKey() {
   return (window.currentUser?.id || 'anon') + '_rom_index_v1';
@@ -795,7 +776,9 @@ async function _loadRomIndex() {
     if (!fileId) {
       _cache.indexFileId = null;
       _cache.romIndex = _emptyIndex();
+
       dbg('ROM index: not found — fresh start');
+
       _showEmptyState();
       return;
     }
@@ -806,8 +789,9 @@ async function _loadRomIndex() {
     if (!res.ok) throw new Error('Index DL failed: ' + res.status);
 
     _cache.romIndex = await res.json();
-    _cache.romIndex.roms = _cache.romIndex.roms || [];
-    _cache.romIndex.bios = _cache.romIndex.bios || [];
+
+    _cache.romIndex.roms  = _cache.romIndex.roms  || [];
+    _cache.romIndex.bios  = _cache.romIndex.bios  || [];
     _cache.romIndex.saves = _cache.romIndex.saves || [];
 
     await _migrateSavesToAppData();
@@ -824,7 +808,6 @@ async function _loadRomIndex() {
     if (ROMS.length === 0) _showEmptyState();
     else _buildRomList();
 
-    // Background validation
     if (_cache.romIndex.roms.length > 0) {
       _validateRomIndex().then(() => {
         if (ROMS.length !== _cache.romIndex.roms.length) {
@@ -838,7 +821,6 @@ async function _loadRomIndex() {
   }
 }
 
-// Silently checks if ROMs still exist in Drive and removes ghosts.
 async function _validateRomIndex() {
   if (!_cache.romIndex || _cache.romIndex.roms.length === 0) return;
 
@@ -871,6 +853,7 @@ async function _validateRomIndex() {
 
   if (removedCount > 0) {
     _cache.romIndex.roms = validRoms;
+
     await _saveRomIndex();
     _rebuildRomsFromIndex();
 
@@ -911,12 +894,10 @@ function _rebuildRomsFromIndex() {
     cls: r.cls,
     landscape: r.landscape,
     system: r.system,
-    folder: r.system, // alias — getKeybinds uses .folder
+    folder: r.system,
   }));
 }
 
-// Ensure the visible saves/ folder exists (created once, ID stored in index).
-// Now used only for manual EXPORT SAVE.
 async function _ensureSaveFolder() {
   if (_cache.romIndex?.saveFolderId) return _cache.romIndex.saveFolderId;
 
@@ -937,14 +918,12 @@ function _classifyPickedFile(name) {
   const lower = name.toLowerCase();
   const ext = lower.slice(lower.lastIndexOf('.'));
 
-  // .bin is ambiguous: BIOS filenames win, otherwise Genesis ROM
   if (ext === '.bin') {
     return BIOS_FILENAMES.has(lower)
       ? { type: 'bios', system: null }
       : { type: 'rom', system: 'genesis' };
   }
 
-  // Check known BIOS filenames for other extensions
   if (BIOS_FILENAMES.has(lower)) return { type: 'bios', system: null };
 
   const system = SYSTEM_BY_EXT[ext];
@@ -973,6 +952,7 @@ async function _loadGapi() {
 
     const s = document.createElement('script');
     s.src = 'https://apis.google.com/js/api.js';
+
     s.onload = () =>
       gapi.load('picker', {
         callback: () => {
@@ -981,12 +961,13 @@ async function _loadGapi() {
         },
         onerror: reject
       });
+
     s.onerror = () => reject(new Error('gapi script blocked — check network'));
+
     document.head.appendChild(s);
   });
 }
 
-// Google Identity Services — fresh pre-Picker reauth
 let _gisReady = false;
 
 async function _loadGis() {
@@ -1001,16 +982,17 @@ async function _loadGis() {
 
     const s = document.createElement('script');
     s.src = 'https://accounts.google.com/gsi/client';
+
     s.onload = () => {
       _gisReady = true;
       resolve();
     };
+
     s.onerror = () => reject(new Error('GIS script blocked — check network'));
+
     document.head.appendChild(s);
   });
 }
-
-let _gisTokenClient = null;
 
 function _refreshDriveAuthForPicker() {
   return new Promise((resolve) => {
@@ -1044,7 +1026,6 @@ function _refreshDriveAuthForPicker() {
   });
 }
 
-// mode: 'roms' (add ROMs + BIOS) | 'save' (import a .sav for one ROM)
 window._pickerOpen = false;
 
 function _focusPickerFrame() {
@@ -1104,13 +1085,16 @@ async function openPicker(mode = 'roms', forRom = null) {
 
         if (action === google.picker.Action.PICKED) {
           window._pickerOpen = false;
+
           if (_prevFocused && typeof _prevFocused.focus === 'function') _prevFocused.focus();
 
           const docs = data[google.picker.Response.DOCUMENTS];
           await _processPickedFiles(docs, mode, forRom);
+
           resolve(docs);
         } else if (action === google.picker.Action.CANCEL) {
           window._pickerOpen = false;
+
           if (_prevFocused && typeof _prevFocused.focus === 'function') _prevFocused.focus();
 
           _setSelectorStatus('SELECT ROM');
@@ -1134,7 +1118,7 @@ async function _processPickedFiles(docs, mode, forRom) {
     _cache.romIndex = _emptyIndex();
   }
 
-  // ── Save import mode ─────────────────────────────────────────
+  // Save import from Drive
   if (mode === 'save' && forRom) {
     if (!docs.length) return;
 
@@ -1160,17 +1144,16 @@ async function _processPickedFiles(docs, mode, forRom) {
           sourceId: null,
           legacyId: null
         };
+
         _cache.romIndex.saves.push(entry);
       }
 
-      // Backup the imported file once, so we can restore it later
       const backupId = await _writeAppFileBytes(
         _batteryBackupName(forRom.file),
         bytes,
         entry.backupId || null
       );
 
-      // Active working copy
       const activeId = await _writeAppFileBytes(
         _batteryActiveName(forRom.file),
         bytes,
@@ -1193,6 +1176,7 @@ async function _processPickedFiles(docs, mode, forRom) {
 
       _setSelectorStatus('SAVE IMPORTED — ORIGINAL NOT MODIFIED');
       dbg('Save imported safely: ' + doc.name + ' → ' + forRom.file);
+
       _rebuildRomDots();
     } catch (err) {
       dbg('Import save ERR: ' + err.message);
@@ -1202,10 +1186,11 @@ async function _processPickedFiles(docs, mode, forRom) {
     return;
   }
 
-  // ── ROM / BIOS mode ──────────────────────────────────────────
+  // ROM / BIOS mode
   let added = 0;
   let updated = 0;
   let skipped = 0;
+
   const skippedNames = [];
 
   for (const doc of docs) {
@@ -1273,6 +1258,7 @@ async function _processPickedFiles(docs, mode, forRom) {
       });
 
       added++;
+
       dbg('ROM: ' + doc.name + ' [' + system + '] → ' + doc.id);
     }
   }
@@ -1280,6 +1266,7 @@ async function _processPickedFiles(docs, mode, forRom) {
   if (skippedNames.length) dbg('Skipped: ' + skippedNames.join(', '));
 
   await _saveRomIndex();
+
   _rebuildRomsFromIndex();
   _buildRomList();
 
@@ -1292,7 +1279,7 @@ async function _processPickedFiles(docs, mode, forRom) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// BIOS LOADING — from index
+// BIOS LOADING
 // ══════════════════════════════════════════════════════════════
 async function _loadBios(core) {
   const config = BIOS_REGISTRY[core];
@@ -1312,13 +1299,387 @@ async function _loadBios(core) {
 
   try {
     const url = await driveDownloadBlob(entry.id, _cache.biosBlobs, 'BIOS ' + entry.file);
+
     window[config.ejsVar] = url;
+
     dbg('BIOS active: ' + entry.file + ' → ' + config.ejsVar);
+
     return true;
   } catch (err) {
     dbg('BIOS download error (' + entry.file + '): ' + err.message);
+
     delete window[config.ejsVar];
+
     return !config.required;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOCAL / GUEST HELPERS
+// ══════════════════════════════════════════════════════════════
+function _readFileBytes(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => resolve(new Uint8Array(reader.result));
+    reader.onerror = () => reject(reader.error || new Error('File read failed'));
+
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function _downloadBytesToDevice(filename, bytes, mime = 'application/octet-stream') {
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.style.display = 'none';
+
+  document.body.appendChild(a);
+
+  a.focus();
+  a.click();
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 2000);
+}
+
+function _openLocalRomPicker() {
+  document.getElementById('local-rom-input')?.click();
+}
+
+async function _onLocalRomSelected(e) {
+  const files = [...(e.target.files || [])];
+  e.target.value = '';
+
+  if (!files.length) return;
+
+  let added = 0;
+  let skipped = 0;
+  let dup = 0;
+
+  for (const file of files) {
+    const classified = _classifyPickedFile(file.name);
+
+    if (classified.type !== 'rom') {
+      skipped++;
+      continue;
+    }
+
+    const sys = SYSTEMS[classified.system];
+
+    if (!sys) {
+      skipped++;
+      continue;
+    }
+
+    const exists = _localRoms.some(
+      r => r.file.toLowerCase() === file.name.toLowerCase()
+    );
+
+    if (exists) {
+      dup++;
+      continue;
+    }
+
+    const id = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const blobUrl = URL.createObjectURL(file);
+
+    const displayName = file.name
+      .replace(/\.[^.]+$/, '')
+      .replace(/[-_]/g, ' ');
+
+    _localRoms.push({
+      id,
+      name: displayName,
+      file: file.name,
+      fileId: id,
+      local: true,
+      blobUrl,
+      system: classified.system,
+      core: sys.core,
+      label: sys.label,
+      cls: sys.cls,
+      landscape: _resolveLandscape(sys),
+      folder: classified.system,
+    });
+
+    added++;
+  }
+
+  ROMS = [..._localRoms];
+
+  _activeCategory = 'all';
+  _buildRomList();
+
+  const parts = [];
+  if (added) parts.push(added + ' ADDED');
+  if (dup) parts.push(dup + ' DUP');
+  if (skipped) parts.push(skipped + ' SKIPPED');
+
+  _setSelectorStatus(parts.join(' · ') || 'NO CHANGES');
+}
+
+async function _importBatterySaveFromDevice(rom) {
+  const input = document.getElementById('local-save-import-input');
+  if (!input || !rom) return;
+
+  input.dataset.romFile = rom.file;
+  input.click();
+}
+
+async function _exportBatterySaveToDevice(rom) {
+  if (!rom) return false;
+
+  let bytes = null;
+
+  if (_isGuest()) {
+    bytes = _guestBatterySaves[rom.file];
+  } else {
+    if (typeof _getSaveEntry === 'function' && typeof _downloadSaveEntryBytes === 'function') {
+      const entry = _getSaveEntry(rom.file);
+      bytes = await _downloadSaveEntryBytes(entry);
+    }
+
+    if (!bytes && typeof _cloudBatteryDownload === 'function') {
+      bytes = await _cloudBatteryDownload(rom.file);
+    }
+  }
+
+  if (!bytes?.byteLength) {
+    _setSelectorStatus('NO SAVE TO EXPORT');
+    return false;
+  }
+
+  const filename = rom.file.replace(/\.[^.]+$/, '') + '.sav';
+
+  _downloadBytesToDevice(filename, bytes);
+
+  if (_isGuest()) {
+    _guestSaveExported = true;
+  }
+
+  _setSelectorStatus('EXPORTED TO DEVICE');
+  return true;
+}
+
+async function _onLocalSaveImportSelected(e) {
+  const input = e.target;
+
+  const file = input.files?.[0];
+  const romFile = input.dataset.romFile;
+
+  input.value = '';
+
+  if (!file || !romFile) return;
+
+  try {
+    const bytes = await _readFileBytes(file);
+
+    if (!bytes?.byteLength) {
+      throw new Error('EMPTY FILE');
+    }
+
+    if (_isGuest()) {
+      _guestBatterySaves[romFile] = bytes;
+      _guestSaveExported = false;
+
+      _rebuildRomDots();
+      _setSelectorStatus('SAVE IMPORTED FROM DEVICE');
+
+      return;
+    }
+
+    if (
+      typeof _getSaveEntry !== 'function' ||
+      typeof _writeAppFileBytes !== 'function' ||
+      typeof _batteryActiveName !== 'function' ||
+      typeof _batteryBackupName !== 'function'
+    ) {
+      _setSelectorStatus('SAFE SAVE CODE MISSING');
+      return;
+    }
+
+    if (!_cache.romIndex) _cache.romIndex = _emptyIndex();
+
+    let entry = _getSaveEntry(romFile);
+
+    if (!entry) {
+      entry = {
+        romFile,
+        v: 2,
+        activeId: null,
+        backupId: null,
+        sourceId: null,
+        legacyId: null
+      };
+
+      _cache.romIndex.saves.push(entry);
+    }
+
+    const backupId = await _writeAppFileBytes(
+      _batteryBackupName(romFile),
+      bytes,
+      entry.backupId || null
+    );
+
+    const activeId = await _writeAppFileBytes(
+      _batteryActiveName(romFile),
+      bytes,
+      entry.activeId || null
+    );
+
+    if (!activeId) {
+      throw new Error('FAILED TO WRITE ACTIVE SAVE');
+    }
+
+    entry.activeId = activeId;
+    if (backupId) entry.backupId = backupId;
+
+    entry.sourceName = file.name;
+    entry.v = 2;
+    entry.updatedAt = Date.now();
+
+    await _saveRomIndex();
+
+    _rebuildRomDots();
+    _setSelectorStatus('SAVE IMPORTED FROM DEVICE');
+  } catch (err) {
+    dbg('Device save import ERR: ' + err.message);
+    _setSelectorStatus('IMPORT FAILED');
+  }
+}
+
+function _showGuestExitPrompt() {
+  _guestExitPromptOpen = true;
+  document.getElementById('guest-export-overlay')?.classList.add('visible');
+}
+
+function _hideGuestExitPrompt() {
+  _guestExitPromptOpen = false;
+  document.getElementById('guest-export-overlay')?.classList.remove('visible');
+}
+
+async function _guestExportAndExit() {
+  _hideGuestExitPrompt();
+
+  if (_currentRom) {
+    await _exportBatterySaveToDevice(_currentRom);
+  }
+
+  await exitRom(true);
+}
+
+async function _guestExitWithoutExport() {
+  _hideGuestExitPrompt();
+  await exitRom(true);
+}
+
+// ══════════════════════════════════════════════════════════════
+// GUEST SAVE STATES — IndexedDB
+// ROMs and battery saves remain session-only.
+// Save states persist in browser storage only.
+// ══════════════════════════════════════════════════════════════
+let _guestDBPromise = null;
+
+function _openGuestDB() {
+  if (_guestDBPromise) return _guestDBPromise;
+
+  _guestDBPromise = new Promise((resolve, reject) => {
+    if (!('indexedDB' in window)) {
+      reject(new Error('NO_INDEXEDDB'));
+      return;
+    }
+
+    const req = indexedDB.open('retro_emu_guest', 1);
+
+    req.onupgradeneeded = () => {
+      const db = req.result;
+
+      if (!db.objectStoreNames.contains('states')) {
+        db.createObjectStore('states');
+      }
+    };
+
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+
+  return _guestDBPromise;
+}
+
+async function _idbPut(key, value) {
+  const db = await _openGuestDB();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('states', 'readwrite');
+    tx.objectStore('states').put(value, key);
+
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function _idbGet(key) {
+  const db = await _openGuestDB();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('states', 'readonly');
+    const req = tx.objectStore('states').get(key);
+
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function _guestStateKey(gameName) {
+  const base = String(gameName || 'game').replace(/\.[^.]+$/, '');
+  const safe = base.replace(/[^a-zA-Z0-9._-]/g, '');
+
+  return `guest_${safe}_slot${_currentSlot}.state`;
+}
+
+async function _guestStateExists(gameName) {
+  try {
+    return !!(await _idbGet(_guestStateKey(gameName)));
+  } catch {
+    return false;
+  }
+}
+
+async function _guestDownloadState(gameName) {
+  try {
+    const data = await _idbGet(_guestStateKey(gameName));
+
+    if (!data) return null;
+
+    if (data instanceof Uint8Array) return data;
+    if (data instanceof ArrayBuffer) return new Uint8Array(data);
+    if (data instanceof Blob) return new Uint8Array(await data.arrayBuffer());
+
+    if (data.byteLength) return new Uint8Array(data);
+
+    return null;
+  } catch (err) {
+    dbg('_guestDownloadState ERR: ' + err.message);
+    return null;
+  }
+}
+
+async function _guestUploadState(gameName, bytes) {
+  try {
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+
+    await _idbPut(_guestStateKey(gameName), blob);
+
+    return true;
+  } catch (err) {
+    dbg('_guestUploadState ERR: ' + err.message);
+    return false;
   }
 }
 
@@ -1327,9 +1688,12 @@ async function _loadBios(core) {
 // ══════════════════════════════════════════════════════════════
 function _saveKey(gameName) {
   const uid = window.currentUser?.id || 'anon';
-  const base = gameName.replace(/\.[^.]+$/, '');
+
+  const base = String(gameName || 'game').replace(/\.[^.]+$/, '');
   const safe = base.replace(/[^a-zA-Z0-9._-]/g, '');
+
   const slotSuffix = _currentSlot === 0 ? '' : `_slot${_currentSlot}`;
+
   return uid + '_' + safe + slotSuffix + '.state';
 }
 
@@ -1343,10 +1707,12 @@ async function _cloudSaveExists(gameName) {
 
 async function _cloudDownload(gameName) {
   const filename = _saveKey(gameName);
+
   dbg('DL save: ' + filename);
 
   try {
     const fileId = await driveFindAppFile(filename);
+
     if (!fileId) {
       dbg('No cloud save');
       return null;
@@ -1359,7 +1725,9 @@ async function _cloudDownload(gameName) {
     }
 
     const buf = await res.arrayBuffer();
+
     dbg('DL save: ' + buf.byteLength + 'B');
+
     return new Uint8Array(buf);
   } catch (err) {
     dbg('DL save ERR: ' + err.message);
@@ -1369,6 +1737,7 @@ async function _cloudDownload(gameName) {
 
 async function _cloudUpload(gameName, bytes) {
   const filename = _saveKey(gameName);
+
   dbg('UL save: ' + filename + ' (' + bytes.byteLength + 'B)');
 
   await _ensureFreshToken();
@@ -1393,15 +1762,12 @@ async function _cloudUpload(gameName, bytes) {
 
 // ══════════════════════════════════════════════════════════════
 // BATTERY SAVE — SAFE APPDATA WORKING COPY
-// File IDs live in romIndex.saves[].
-// On launch: download active copy, inject into Emscripten FS.
-// On exit + every 5 min: extract SRAM, write active appData copy.
-// The original Picker-selected file is never automatically overwritten.
 // ══════════════════════════════════════════════════════════════
 async function _cloudBatteryDownload(romFile) {
   if (!_cache.romIndex) return null;
 
   const entry = _getSaveEntry(romFile);
+
   if (!entry) {
     dbg('No battery save in index for: ' + romFile);
     return null;
@@ -1409,6 +1775,7 @@ async function _cloudBatteryDownload(romFile) {
 
   try {
     let source = 'active';
+
     let bytes = entry.activeId ? await _downloadDriveBytes(entry.activeId) : null;
 
     if (!bytes && entry.backupId) {
@@ -1431,7 +1798,6 @@ async function _cloudBatteryDownload(romFile) {
       return null;
     }
 
-    // If active copy was missing, recreate it from backup/legacy
     if (source !== 'active') {
       const activeId = await _writeAppFileBytes(
         _batteryActiveName(romFile),
@@ -1442,11 +1808,13 @@ async function _cloudBatteryDownload(romFile) {
       if (activeId) {
         entry.activeId = activeId;
         await _saveRomIndex();
+
         dbg('Recreated active battery save from ' + source + ' for: ' + romFile);
       }
     }
 
     dbg('Battery DL: ' + bytes.byteLength + 'B');
+
     return bytes;
   } catch (err) {
     dbg('Battery DL ERR: ' + err.message);
@@ -1470,6 +1838,7 @@ async function _cloudBatteryUpload(romFile, bytes) {
       sourceId: null,
       legacyId: null
     };
+
     _cache.romIndex.saves.push(entry);
   }
 
@@ -1491,6 +1860,7 @@ async function _cloudBatteryUpload(romFile, bytes) {
   await _saveRomIndex();
 
   dbg('Battery UL OK (appData active) for: ' + romFile);
+
   return true;
 }
 
@@ -1516,8 +1886,36 @@ async function _extractAndUploadBattery(rom) {
     if (!srm?.byteLength) return;
 
     const isBlank = [...srm.slice(0, 64)].every(b => b === 0x00 || b === 0xFF);
+
     if (isBlank) {
       dbg('Battery extract: blank SRAM, skipping');
+      return;
+    }
+
+    if (_isGuest()) {
+      const prev = _guestBatterySaves[rom.file];
+
+      let changed = true;
+
+      if (prev && prev.byteLength === srm.byteLength) {
+        changed = false;
+
+        for (let i = 0; i < srm.byteLength; i++) {
+          if (prev[i] !== srm[i]) {
+            changed = true;
+            break;
+          }
+        }
+      }
+
+      _guestBatterySaves[rom.file] = srm;
+
+      if (changed) {
+        _guestSaveExported = false;
+      }
+
+      dbg('Guest battery save updated (changed=' + changed + ')');
+
       return;
     }
 
@@ -1545,13 +1943,17 @@ function _injectBatterySave(rom) {
     done = true;
     clearInterval(poll);
 
-    const bytes = await _cloudBatteryDownload(rom.file);
+    const bytes = _isGuest()
+      ? _guestBatterySaves[rom.file]
+      : await _cloudBatteryDownload(rom.file);
+
     if (!bytes?.byteLength) {
       dbg('No battery save to inject');
       return;
     }
 
     const savePath = gm.getSaveFilePath();
+
     dbg('Injecting battery save → ' + savePath);
 
     const parts = savePath.split('/').filter(Boolean);
@@ -1559,6 +1961,7 @@ function _injectBatterySave(rom) {
 
     for (let i = 0; i < parts.length - 1; i++) {
       built += '/' + parts[i];
+
       try {
         FS.mkdir(built);
       } catch {}
@@ -1573,10 +1976,12 @@ function _injectBatterySave(rom) {
     await new Promise(r => setTimeout(r, 300));
 
     const live = gm.getSaveFile?.();
+
     const isEmpty = !live || [...live.slice(0, 32)].every(b => b === 0x00 || b === 0xFF);
 
     if (isEmpty) {
       dbg('SRAM empty after loadSaveFiles — restarting core');
+
       setTimeout(() => {
         try {
           gm.restart();
@@ -1615,6 +2020,7 @@ async function _exportBatterySaveToDrive(rom) {
 
   const base = rom.file.replace(/\.[^.]+$/, '');
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+
   const filename = `${base}.export-${ts}.sav`;
 
   const newId = await _driveCreateOwnedFile(filename, folderId, bytes);
@@ -1679,7 +2085,6 @@ async function _deleteBatterySave(rom) {
     return;
   }
 
-  // Delete only app-managed copies, not the user's original source file
   if (entry.activeId) await _driveDeleteFile(entry.activeId);
   if (entry.backupId) await _driveDeleteFile(entry.backupId);
 
@@ -1702,27 +2107,34 @@ function _buildCategoryBar() {
   bar.innerHTML = '';
 
   const counts = {};
+
   ROMS.forEach(r => {
     counts[r.system] = (counts[r.system] || 0) + 1;
   });
 
   const allBtn = document.createElement('button');
+
   allBtn.className = 'cat-btn' + (_activeCategory === 'all' ? ' active' : '');
   allBtn.dataset.cat = 'all';
   allBtn.style.setProperty('--cat-color', '#00ff41');
   allBtn.innerHTML = `ALL <span class="cat-count">${ROMS.length}</span>`;
+
   allBtn.addEventListener('click', () => _setCategory('all'));
+
   bar.appendChild(allBtn);
 
   for (const sys of SYS_ORDER) {
     if (!counts[sys]) continue;
 
     const btn = document.createElement('button');
+
     btn.className = 'cat-btn' + (_activeCategory === sys ? ' active' : '');
     btn.dataset.cat = sys;
     btn.style.setProperty('--cat-color', SYS_COLORS[sys] || '#00ff41');
     btn.innerHTML = `${SYSTEMS[sys].label} <span class="cat-count">${counts[sys]}</span>`;
+
     btn.addEventListener('click', () => _setCategory(sys));
+
     bar.appendChild(btn);
   }
 }
@@ -1735,9 +2147,11 @@ function _filterRoms() {
 
 function _setCategory(cat) {
   _activeCategory = cat;
+
   _filterRoms();
   _buildCategoryBar();
   _buildFilteredList();
+
   _romIndex = 0;
 
   document.querySelector('.cat-btn.active')?.scrollIntoView({
@@ -1749,15 +2163,18 @@ function _setCategory(cat) {
 
 function _cycleCategory(direction) {
   const buttons = [...(document.querySelectorAll('.cat-btn') || [])];
+
   if (!buttons.length) return;
 
   const cur = buttons.findIndex(b => b.dataset.cat === _activeCategory);
 
   let n = cur + direction;
+
   if (n < 0) n = buttons.length - 1;
   if (n >= buttons.length) n = 0;
 
   const cat = buttons[n]?.dataset.cat;
+
   if (cat && cat !== _activeCategory) _setCategory(cat);
 }
 
@@ -1777,15 +2194,19 @@ function _buildFilteredList() {
 
   _filteredRoms.forEach((rom, i) => {
     const btn = document.createElement('button');
+
     btn.className = 'rom-item' + (i === 0 ? ' selected' : '');
     btn.dataset.sys = rom.system;
+
     btn.style.setProperty('--sys-color', SYS_COLORS[rom.system] || '#00ff41');
     btn.style.setProperty('--rom-delay', i < 8 ? `${i * 20}ms` : '0ms');
 
-    const hasSave = !!(_cache.romIndex?.saves.some(s => s.romFile === rom.file));
+    const hasSave = _romHasSave(rom);
     const saveDot = hasSave ? '<span class="rom-save-dot"></span>' : '';
 
-    btn.innerHTML = `<span class="rom-name">${rom.name}</span>${saveDot}<span class="rom-badge ${rom.cls}">${rom.label}</span>`;
+    btn.innerHTML =
+      `<span class="rom-name">${rom.name}</span>${saveDot}<span class="rom-badge ${rom.cls}">${rom.label}</span>`;
+
     btn.addEventListener('click', () => launchRom(i));
 
     list.appendChild(btn);
@@ -1794,7 +2215,6 @@ function _buildFilteredList() {
   _romIndex = 0;
 }
 
-// Rebuild just the save dots without rebuilding the whole list.
 function _rebuildRomDots() {
   const items = document.querySelectorAll('.rom-item');
 
@@ -1802,7 +2222,7 @@ function _rebuildRomDots() {
     const rom = _filteredRoms[i];
     if (!rom) return;
 
-    const hasSave = !!(_cache.romIndex?.saves.some(s => s.romFile === rom.file));
+    const hasSave = _romHasSave(rom);
     const existing = btn.querySelector('.rom-save-dot');
 
     if (hasSave && !existing) {
@@ -1823,28 +2243,63 @@ function _showEmptyState() {
   if (bar) bar.innerHTML = '';
 
   const list = document.getElementById('rom-list');
+  if (!list) return;
 
-  if (list) {
-    list.innerHTML = `<div class="rom-list-msg">NO ROMS YET<br><br>Press <span class="msg-gold">+</span> to pick ROM files<br>directly from your Google Drive.<br><br><span style="color:var(--text-mut);font-size:7px;line-height:2;">Select any .gb .gbc .gba .nes .sfc<br>.chd .gg .sms .md files — or BIOS<br>files like scph1001.bin for PS1.</span></div>`;
+  if (_isGuest()) {
+    list.innerHTML =
+      `<div class="rom-list-msg">NO LOCAL ROMS<br><br>Press <span class="msg-gold">+</span> to upload<br>ROM files from this device.<br><br><span style="color:var(--text-mut);font-size:7px;line-height:2;">Guest ROMs are session-only.<br>Save states use browser storage.<br>Export battery saves before closing.</span></div>`;
+    return;
   }
+
+  list.innerHTML =
+    `<div class="rom-list-msg">NO ROMS YET<br><br>Press <span class="msg-gold">+</span> to pick ROM files<br>directly from your Google Drive.<br><br><span style="color:var(--text-mut);font-size:7px;line-height:2;">Select any .gb .gbc .gba .nes .sfc<br>.chd .gg .sms .md files — or BIOS<br>files like scph1001.bin for PS1.</span></div>`;
 }
 
 // ══════════════════════════════════════════════════════════════
 // ROM OPTIONS OVERLAY
-// Triggered by * key on selector screen.
-// Dynamic options:
-// LAUNCH / IMPORT SAVE / RESTORE BACKUP / EXPORT SAVE / DELETE SAVE / REMOVE FROM LIST
 // ══════════════════════════════════════════════════════════════
+function _romHasSave(rom) {
+  if (!rom) return false;
+
+  if (_isGuest()) {
+    return !!_guestBatterySaves[rom.file];
+  }
+
+  return !!(_cache.romIndex?.saves?.some(s => s.romFile === rom.file));
+}
+
 function _getRomOptions(rom) {
-  const entry = rom ? _getSaveEntry(rom.file) : null;
+  const opts = ['LAUNCH'];
 
-  const opts = ['LAUNCH', 'IMPORT SAVE'];
+  if (_isGuest()) {
+    opts.push('IMPORT DEVICE');
+    opts.push('EXPORT DEVICE');
+    opts.push('REMOVE ROM');
 
-  if (entry?.backupId) opts.push('RESTORE BACKUP');
-  if (entry) opts.push('EXPORT SAVE');
-  if (entry) opts.push('DELETE SAVE');
+    return opts;
+  }
 
-  opts.push('REMOVE FROM LIST');
+  const entry = typeof _getSaveEntry === 'function'
+    ? _getSaveEntry(rom.file)
+    : null;
+
+  opts.push('IMPORT DRIVE');
+  opts.push('IMPORT DEVICE');
+
+  if (entry) {
+    opts.push('EXPORT DRIVE');
+    opts.push('EXPORT DEVICE');
+  }
+
+  if (entry?.backupId) {
+    opts.push('RESTORE BACKUP');
+  }
+
+  if (entry) {
+    opts.push('DELETE SAVE');
+  }
+
+  opts.push('REMOVE ROM');
 
   return opts;
 }
@@ -1860,7 +2315,9 @@ function _showRomOptions() {
   if (!overlay) return;
 
   document.getElementById('rom-options-title').textContent = rom.name.toUpperCase();
+
   _renderRomOptions();
+
   overlay.classList.add('visible');
 }
 
@@ -1876,20 +2333,25 @@ function _renderRomOptions() {
 
   _romOptions.forEach((label, i) => {
     const el = document.createElement('div');
+
     el.className = 'rom-option-item' + (i === _romOptionsIndex ? ' selected' : '');
     el.textContent = label;
+
     grid.appendChild(el);
   });
 }
 
 function _navigateRomOptions(dir) {
   if (!_romOptions.length) return;
+
   _romOptionsIndex = (_romOptionsIndex + dir + _romOptions.length) % _romOptions.length;
+
   _renderRomOptions();
 }
 
 async function _confirmRomOption() {
   const rom = _filteredRoms[_romIndex];
+
   if (!rom) {
     _closeRomOptions();
     return;
@@ -1897,37 +2359,95 @@ async function _confirmRomOption() {
 
   const choice = _romOptions[_romOptionsIndex];
 
-  // Simple confirmation for destructive action
-  if (choice === 'DELETE SAVE') {
-    _romOptions = ['CONFIRM DELETE SAVE', 'CANCEL'];
-    _romOptionsIndex = 0;
-    _renderRomOptions();
-    return;
-  }
-
-  if (choice === 'CANCEL') {
-    _closeRomOptions();
-    return;
-  }
-
   _closeRomOptions();
 
   if (choice === 'LAUNCH') {
     launchRom(_romIndex);
-  } else if (choice === 'IMPORT SAVE') {
-    await openPicker('save', rom);
-  } else if (choice === 'RESTORE BACKUP') {
-    await _restoreBatteryBackup(rom);
-  } else if (choice === 'EXPORT SAVE') {
-    await _exportBatterySaveToDrive(rom);
-  } else if (choice === 'CONFIRM DELETE SAVE') {
-    await _deleteBatterySave(rom);
-  } else if (choice === 'REMOVE FROM LIST') {
+    return;
+  }
+
+  if (choice === 'IMPORT DRIVE') {
+    if (typeof openPicker === 'function') {
+      await openPicker('save', rom);
+    } else {
+      _setSelectorStatus('DRIVE IMPORT UNAVAILABLE');
+    }
+
+    return;
+  }
+
+  if (choice === 'IMPORT DEVICE') {
+    await _importBatterySaveFromDevice(rom);
+    return;
+  }
+
+  if (choice === 'EXPORT DRIVE') {
+    if (typeof _exportBatterySaveToDrive === 'function') {
+      await _exportBatterySaveToDrive(rom);
+    } else {
+      _setSelectorStatus('DRIVE EXPORT UNAVAILABLE');
+    }
+
+    return;
+  }
+
+  if (choice === 'EXPORT DEVICE') {
+    await _exportBatterySaveToDevice(rom);
+    return;
+  }
+
+  if (choice === 'RESTORE BACKUP') {
+    if (typeof _restoreBatteryBackup === 'function') {
+      await _restoreBatteryBackup(rom);
+    } else {
+      _setSelectorStatus('RESTORE UNAVAILABLE');
+    }
+
+    return;
+  }
+
+  if (choice === 'DELETE SAVE') {
+    if (typeof _deleteBatterySave === 'function') {
+      await _deleteBatterySave(rom);
+    } else {
+      _setSelectorStatus('DELETE UNAVAILABLE');
+    }
+
+    return;
+  }
+
+  if (choice === 'REMOVE ROM') {
+    if (_isGuest()) {
+      const idx = _localRoms.findIndex(r => r.id === rom.fileId || r.file === rom.file);
+
+      if (idx >= 0) {
+        if (_localRoms[idx].blobUrl) {
+          URL.revokeObjectURL(_localRoms[idx].blobUrl);
+        }
+
+        _localRoms.splice(idx, 1);
+      }
+
+      delete _guestBatterySaves[rom.file];
+
+      ROMS = [..._localRoms];
+
+      _activeCategory = 'all';
+
+      if (ROMS.length === 0) _showEmptyState();
+      else _buildRomList();
+
+      _setSelectorStatus('REMOVED LOCAL ROM');
+
+      return;
+    }
+
     if (!_cache.romIndex) return;
 
     _cache.romIndex.roms = _cache.romIndex.roms.filter(r => r.id !== rom.fileId);
 
     await _saveRomIndex();
+
     _rebuildRomsFromIndex();
 
     if (ROMS.length === 0) _showEmptyState();
@@ -1942,6 +2462,7 @@ async function _confirmRomOption() {
 // ══════════════════════════════════════════════════════════════
 function _focusRomItem(index) {
   const items = document.querySelectorAll('.rom-item');
+
   if (items[index]) {
     items[index].focus();
     items[index].scrollIntoView({ block: 'nearest' });
@@ -1950,6 +2471,7 @@ function _focusRomItem(index) {
 
 function _focusActiveCategory() {
   const activeCat = document.querySelector('.cat-btn.active');
+
   if (activeCat) {
     activeCat.focus();
     activeCat.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
@@ -1958,12 +2480,14 @@ function _focusActiveCategory() {
 
 function _focusHeaderButton() {
   const addBtn = document.getElementById('add-roms-btn');
+
   if (addBtn?.offsetParent !== null) {
     addBtn.focus();
     return;
   }
 
   const signOutBtn = document.getElementById('sign-out-btn');
+
   if (signOutBtn?.offsetParent !== null) {
     signOutBtn.focus();
   }
@@ -2007,12 +2531,14 @@ let _selectorMsgTimer = null;
 
 function _setSaveStatus(text, cls) {
   const el = document.getElementById('save-status');
+
   if (el) {
     el.textContent = text;
     el.className = 'save-status' + (cls ? ' ' + cls : '');
   }
 
   const toast = document.getElementById('emu-toast');
+
   if (toast) {
     clearTimeout(_toastHideTimer);
     toast.classList.add('visible');
@@ -2035,6 +2561,7 @@ function _setSelectorStatus(msg, duration = 2500) {
   el.textContent = msg;
 
   clearTimeout(_selectorMsgTimer);
+
   _selectorMsgTimer = setTimeout(() => {
     el.textContent = 'SELECT ROM';
   }, duration);
@@ -2052,6 +2579,7 @@ function _buildRomList() {
   _buildCategoryBar();
   _filterRoms();
   _buildFilteredList();
+
   requestAnimationFrame(() => _focusRomItem(0));
 }
 
@@ -2059,11 +2587,13 @@ function _updateSelection(n) {
   n = Math.max(0, Math.min(n, _filteredRoms.length - 1));
 
   const items = document.querySelectorAll('.rom-item');
+
   items.forEach((el, i) => el.classList.toggle('selected', i === n));
 
   _romIndex = n;
 
   const item = items[n];
+
   if (item) {
     item.scrollIntoView({ block: 'nearest' });
     item.focus();
@@ -2084,7 +2614,7 @@ function _renderPortraitHints() {
     .join('');
 }
 
-function ensureLoadingMsg() {
+function _ensureLoadingMsg() {
   let loadMsg = document.getElementById('loading-msg');
 
   if (!loadMsg) {
@@ -2093,10 +2623,12 @@ function ensureLoadingMsg() {
 
     loadMsg = document.createElement('div');
     loadMsg.id = 'loading-msg';
+
     wrapper.appendChild(loadMsg);
   }
 
   loadMsg.innerHTML = '<div class="loading-spinner"></div><span>LOADING <span class="loading-dot"></span></span>';
+
   loadMsg.style.cssText =
     'position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#000;color:#00ff41;font-family:"Press Start 2P",monospace;font-size:8px;letter-spacing:2px;flex-direction:column;gap:14px;z-index:10;text-align:center;padding:16px;';
 
@@ -2127,13 +2659,17 @@ function _renderKeybindsGrid(binds) {
   for (const entry of binds) {
     if (entry.section) {
       const el = document.createElement('div');
+
       el.className = 'keybinds-section';
       el.textContent = entry.label;
+
       grid.appendChild(el);
     } else {
       const el = document.createElement('div');
+
       el.className = 'keybinds-row';
       el.innerHTML = `<span class="keybinds-key">${entry.key}</span><span class="keybinds-action">${entry.action}</span>`;
+
       grid.appendChild(el);
     }
   }
@@ -2146,10 +2682,13 @@ let _saveConfirmTimer = null;
 
 function _showSaveConfirm() {
   document.getElementById('save-confirm')?.classList.add('visible');
+
   _saveConfirmPending = true;
+
   _setSaveStatus('OVERRIDE?', 'warning');
 
   clearTimeout(_saveConfirmTimer);
+
   _saveConfirmTimer = setTimeout(() => {
     if (_saveConfirmPending) _dismissSaveConfirm();
   }, 5000);
@@ -2157,15 +2696,36 @@ function _showSaveConfirm() {
 
 function _dismissSaveConfirm() {
   clearTimeout(_saveConfirmTimer);
+
   document.getElementById('save-confirm')?.classList.remove('visible');
+
   _saveConfirmPending = false;
+
   _hideToast();
 }
 
 // ══════════════════════════════════════════════════════════════
-// SAVE / LOAD (save states — appDataFolder)
+// SAVE / LOAD
+// Drive mode: cloud appDataFolder
+// Guest mode: IndexedDB browser storage
 // ══════════════════════════════════════════════════════════════
 async function manualSave() {
+  if (_isGuest()) {
+    if (!_saveConfirmPending) {
+      if (await _guestStateExists(window.EJS_gameName)) {
+        _showSaveConfirm();
+        return;
+      }
+
+      await _doGuestSave();
+      return;
+    }
+
+    _dismissSaveConfirm();
+    await _doGuestSave();
+    return;
+  }
+
   if (!_saveConfirmPending) {
     if (await _cloudSaveExists(window.EJS_gameName)) {
       _showSaveConfirm();
@@ -2178,6 +2738,47 @@ async function manualSave() {
 
   _dismissSaveConfirm();
   await _doSave();
+}
+
+async function _doGuestSave() {
+  _setSaveStatus('SAVING...', 'saving');
+
+  try {
+    const gm = window.EJS_emulator?.gameManager;
+
+    if (!gm || typeof gm.getState !== 'function') {
+      _setSaveStatus('NO EMU', '');
+      _clearSaveStatus();
+      return;
+    }
+
+    const data = gm.getState();
+
+    if (!data) {
+      _setSaveStatus('NO DATA', '');
+      _clearSaveStatus();
+      return;
+    }
+
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+
+    if (!bytes?.byteLength) {
+      _setSaveStatus('NO DATA', '');
+      _clearSaveStatus();
+      return;
+    }
+
+    _setSaveStatus('WRITING...', 'saving');
+
+    const ok = await _guestUploadState(window.EJS_gameName, bytes);
+
+    _setSaveStatus(ok ? 'STATE SAVED' : 'SAVE ERR', ok ? 'active' : '');
+  } catch (err) {
+    dbg('_doGuestSave ERR: ' + err.message);
+    _setSaveStatus('ERR', '');
+  }
+
+  _clearSaveStatus();
 }
 
 async function _doSave() {
@@ -2203,6 +2804,7 @@ async function _doSave() {
     _setSaveStatus('UPLOADING...', 'saving');
 
     const ok = await _cloudUpload(window.EJS_gameName, data);
+
     _setSaveStatus(ok ? 'SAVED!' : 'UL ERR', ok ? 'active' : '');
   } catch (err) {
     dbg('_doSave ERR: ' + err.message);
@@ -2224,6 +2826,23 @@ async function manualLoad() {
       return;
     }
 
+    if (_isGuest()) {
+      const bytes = await _guestDownloadState(window.EJS_gameName);
+
+      if (!bytes?.byteLength) {
+        _setSaveStatus('NO STATE', '');
+        _clearSaveStatus();
+        return;
+      }
+
+      gm.loadState(bytes);
+
+      _setSaveStatus('LOADED!', 'active');
+      _clearSaveStatus();
+
+      return;
+    }
+
     const bytes = await _cloudDownload(window.EJS_gameName);
 
     if (!bytes?.byteLength) {
@@ -2233,6 +2852,7 @@ async function manualLoad() {
     }
 
     gm.loadState(bytes);
+
     _setSaveStatus('LOADED!', 'active');
   } catch (err) {
     dbg('manualLoad ERR: ' + err.message);
@@ -2245,12 +2865,26 @@ async function manualLoad() {
 // ══════════════════════════════════════════════════════════════
 // EXIT
 // ══════════════════════════════════════════════════════════════
-async function exitRom() {
+async function exitRom(force = false) {
+  if (_guestExitPromptOpen && !force) {
+    _hideGuestExitPrompt();
+    return;
+  }
+
+  if (_isGuest() && !force && _currentRom && window.EJS_emulator) {
+    await _extractAndUploadBattery(_currentRom);
+
+    if (_guestBatterySaves[_currentRom.file]?.byteLength && !_guestSaveExported) {
+      _showGuestExitPrompt();
+      return;
+    }
+  }
+
+  _hideGuestExitPrompt();
   _dismissSaveConfirm();
 
   document.getElementById('keybinds-overlay')?.classList.remove('visible');
 
-  // Clear global BIOS attachment so it doesn't leak into other cores
   delete window.EJS_biosUrl;
 
   if (window._batteryAutoSave) {
@@ -2274,7 +2908,10 @@ async function exitRom() {
   const wrapper = document.getElementById('emulator-wrapper');
   if (wrapper) wrapper.innerHTML = '';
 
-  for (const url of Object.values(_cache.romBlobs)) URL.revokeObjectURL(url);
+  for (const url of Object.values(_cache.romBlobs)) {
+    URL.revokeObjectURL(url);
+  }
+
   _cache.romBlobs = {};
 
   if (window._lastStateBlobUrl) {
@@ -2283,9 +2920,11 @@ async function exitRom() {
   }
 
   setLandscape(false);
+
   _currentRom = null;
 
   clearTimeout(_toastHideTimer);
+
   _hideToast();
 
   document.getElementById('emulator-screen').style.display = 'none';
@@ -2300,7 +2939,13 @@ async function exitRom() {
 // ══════════════════════════════════════════════════════════════
 async function launchRom(index) {
   const rom = _filteredRoms[index];
+
   if (!rom || !window.currentUser) return;
+
+  if (rom.local && !rom.blobUrl) {
+    _setSelectorStatus('LOCAL ROM MISSING');
+    return;
+  }
 
   _currentRom = rom;
   _saveConfirmPending = false;
@@ -2312,12 +2957,24 @@ async function launchRom(index) {
   document.getElementById('emu-title').textContent = rom.name.toUpperCase();
   document.getElementById('scanlines').style.display = 'none';
 
-  _setSaveStatus('ROM DL...', 'saving');
-
   const loadMsg = _ensureLoadingMsg();
   if (loadMsg) loadMsg.style.display = 'flex';
 
   if (!rom.landscape) _renderPortraitHints();
+
+  if (rom.local) {
+    if (_isGuest()) {
+      _guestSaveExported = false;
+    }
+
+    _setSaveStatus('LOCAL ROM', 'saving');
+
+    _bootEJS(rom, rom.blobUrl);
+
+    return;
+  }
+
+  _setSaveStatus('ROM DL...', 'saving');
 
   let romUrl;
 
@@ -2328,9 +2985,12 @@ async function launchRom(index) {
 
     if (err.message.includes('404')) {
       _cache.romIndex.roms = _cache.romIndex.roms.filter(r => r.id !== rom.fileId);
+
       await _saveRomIndex();
+
       _rebuildRomsFromIndex();
       _buildRomList();
+
       _setSelectorStatus('REMOVED: ' + rom.name.toUpperCase() + ' (NOT IN DRIVE)');
     } else {
       _setSelectorStatus('ROM DL FAILED', 4000);
@@ -2339,6 +2999,7 @@ async function launchRom(index) {
     document.getElementById('emulator-screen').style.display = 'none';
     document.getElementById('selector').style.display = 'flex';
     document.getElementById('scanlines').style.display = 'block';
+
     _hideToast();
 
     return;
@@ -2368,8 +3029,10 @@ async function _bootEJS(rom, romUrl) {
   if (loadMsg) loadMsg.style.display = 'flex';
 
   window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+  window.EJS_gameName = rom.file;
 
   const _wrapperEl = document.getElementById('emulator-wrapper');
+
   const _measuredW = _wrapperEl?.offsetWidth || 0;
   const _measuredH = _wrapperEl?.offsetHeight || 0;
 
@@ -2404,7 +3067,9 @@ async function _bootEJS(rom, romUrl) {
       if (canvas) {
         canvas.style.imageRendering = 'pixelated';
         canvas.style.transform = 'translateZ(0)';
+
         dbg('Canvas isolated');
+
         clearInterval(findCanvas);
       } else if (attempts++ > 50) {
         dbg('Canvas not found');
@@ -2422,6 +3087,7 @@ async function _bootEJS(rom, romUrl) {
       }
 
       dbg('Battery auto-save...');
+
       await _extractAndUploadBattery(_currentRom);
     }, 5 * 60 * 1000);
   };
@@ -2496,13 +3162,18 @@ async function _bootEJS(rom, romUrl) {
     window.EJS_Buttons = buttons;
 
     const script = document.createElement('script');
+
     script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
     script.className = 'ejs-script';
+
     script.onerror = () => {
       dbg('EJS loader.js FAILED');
 
       const lm = document.getElementById('loading-msg');
-      if (lm) lm.innerHTML = 'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
+
+      if (lm) {
+        lm.innerHTML = 'EMULATOR LOAD FAILED<br><span style="font-size:8px;color:#555">Check your connection</span>';
+      }
     };
 
     document.body.appendChild(script);
@@ -2535,7 +3206,6 @@ window.addEventListener('back', (e) => {
 
     exitRom();
   } else {
-    // On selector: RSK closes rom-options if open
     if (document.getElementById('rom-options-overlay')?.classList.contains('visible')) {
       e.preventDefault();
       _closeRomOptions();
@@ -2557,6 +3227,7 @@ window.addEventListener('keydown', (e) => {
 
     if (inEmu) {
       _currentSlot = (_currentSlot + 1) % MAX_SLOTS;
+
       _setSaveStatus(`SLOT ${_currentSlot}`, 'active');
       _clearSaveStatus(1500);
     }
@@ -2573,12 +3244,34 @@ window.addEventListener('keyup', (e) => {
 document.addEventListener('keydown', (e) => {
   if (window._pickerOpen) return;
 
+  if (_guestExitPromptOpen) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      _guestExportAndExit();
+      return;
+    }
+
+    if (e.key === '0') {
+      e.preventDefault();
+      _guestExitWithoutExport();
+      return;
+    }
+
+    if (e.key === 'Escape' || e.key === 'Backspace') {
+      e.preventDefault();
+      _hideGuestExitPrompt();
+      return;
+    }
+
+    return;
+  }
+
   const inSel = document.getElementById('selector').style.display !== 'none';
   const inEmu = document.getElementById('emulator-screen').style.display !== 'none';
+
   const romOptionsOpen = document.getElementById('rom-options-overlay')?.classList.contains('visible');
 
   if (inSel) {
-    // ROM options overlay navigation
     if (romOptionsOpen) {
       if (e.key === 'ArrowUp') {
         e.preventDefault();
@@ -2608,6 +3301,7 @@ document.addEventListener('keydown', (e) => {
     }
 
     const f = document.activeElement;
+
     const isCatBtn = f?.classList.contains('cat-btn');
     const isRomItem = f?.classList.contains('rom-item');
     const isHeaderBtn = f?.closest('.selector-header') !== null;
@@ -2648,6 +3342,7 @@ document.addEventListener('keydown', (e) => {
         _focusPrevHeaderBtn();
       } else {
         _cycleCategory(-1);
+
         if (isCatBtn) _focusActiveCategory();
         else _focusRomItem(0);
       }
@@ -2662,6 +3357,7 @@ document.addEventListener('keydown', (e) => {
         _focusNextHeaderBtn();
       } else {
         _cycleCategory(1);
+
         if (isCatBtn) _focusActiveCategory();
         else _focusRomItem(0);
       }
@@ -2680,14 +3376,19 @@ document.addEventListener('keydown', (e) => {
 
     if (e.key === '0') {
       e.preventDefault();
+
       _currentRom = null;
+
       toggleKeybinds();
+
       return;
     }
 
     if (e.key === '*') {
       e.preventDefault();
+
       if (_filteredRoms.length > 0) _showRomOptions();
+
       return;
     }
   }
@@ -2695,7 +3396,9 @@ document.addEventListener('keydown', (e) => {
   if (inEmu) {
     if (e.key === 'Call') {
       e.preventDefault();
+
       _currentSlot = (_currentSlot + 1) % MAX_SLOTS;
+
       _setSaveStatus(`SLOT ${_currentSlot}`, 'active');
       _clearSaveStatus(1500);
     }
@@ -2731,14 +3434,66 @@ document.addEventListener('keydown', (e) => {
 // ══════════════════════════════════════════════════════════════
 _initFocusSync();
 
+const addBtn = document.getElementById('add-roms-btn');
+
+if (addBtn) {
+  addBtn.onclick = (e) => {
+    e.preventDefault();
+
+    if (_isGuest()) {
+      _openLocalRomPicker();
+    } else {
+      openPicker('roms');
+    }
+  };
+}
+
+document.getElementById('local-rom-input')?.addEventListener('change', _onLocalRomSelected);
+document.getElementById('local-save-import-input')?.addEventListener('change', _onLocalSaveImportSelected);
+
+window.onGuestSuccess = function(user) {
+  window.APP_MODE = 'guest';
+
+  _cache.romIndex = _emptyIndex();
+  _cache.indexFileId = null;
+
+  _localRoms = [];
+  ROMS = [];
+  _filteredRoms = [];
+
+  _activeCategory = 'all';
+  _romIndex = 0;
+
+  _guestBatterySaves = {};
+  _guestSaveExported = false;
+  _guestExitPromptOpen = false;
+
+  const nameEl = document.getElementById('auth-user-name');
+  if (nameEl) nameEl.textContent = 'GUEST';
+
+  document.getElementById('selector').style.display = 'flex';
+
+  _showEmptyState();
+
+  _setSelectorStatus('GUEST MODE — STATES IN BROWSER, SAVES SESSION ONLY', 5000);
+
+  dbg('Guest mode started');
+};
+
 window.onAuthSuccess = function(user) {
+  window.APP_MODE = 'drive';
+
+  _localRoms = [];
+  _guestBatterySaves = {};
+  _guestSaveExported = false;
+  _guestExitPromptOpen = false;
+
   _markTokenFresh();
 
   dbg('Auth success: ' + user.name + ' | screen: ' + SCREEN.toString());
 
   document.getElementById('selector').style.display = 'flex';
 
-  // Preload GIS and gapi so popups aren't blocked by browser gesture timeouts
   _loadGis().catch(e => dbg('GIS preload failed: ' + e.message));
   _loadGapi().catch(e => dbg('gapi preload failed: ' + e.message));
 

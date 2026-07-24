@@ -1,8 +1,7 @@
-// ── auth.js — Google OAuth via Supabase (Drive Edition) ──────────────────────
+// ── auth.js — Google OAuth via Supabase (Drive Edition) + Guest Mode ─────────
 
 const SUPABASE_URL = "https://dvaqqcqvgletpuqmfsxz.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR2YXFxY3F2Z2xldHB1cW1mc3h6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3MTE4NzAsImV4cCI6MjA5MTI4Nzg3MH0.gLNT7QEVD7UJB7RT0hgpNCXIHYQXoNhW0_7kbYmDu4Q";
-
 const WORKER_URL = "/api/token-refresh";
 
 window.SUPABASE_URL      = SUPABASE_URL;
@@ -11,14 +10,17 @@ window.currentUser       = null;
 
 let _authReadyResolve;
 window.authReady = new Promise(res => { _authReadyResolve = res; });
+
 let _supabase = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginBtn   = document.getElementById('google-login-btn');
   const signOutBtn = document.getElementById('sign-out-btn');
+  const guestBtn   = document.getElementById('guest-login-btn');
 
   if (loginBtn)   loginBtn.addEventListener('click', signInWithGoogle);
   if (signOutBtn) signOutBtn.addEventListener('click', signOut);
+  if (guestBtn)   guestBtn.addEventListener('click', startGuestMode);
 
   if (window.supabase) {
     initAuth();
@@ -30,44 +32,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ══════════════════════════════════════════════════════════════
 // AUTH SCREEN — explicit keypad navigation
-// CloudPhone relays raw key presses to the page but provides no
-// spatial/focus navigation of its own — exactly like the ROM
-// selector screen in app.js, this screen must move focus (and
-// scroll it into view) itself in response to arrow keys, or focus
-// never leaves the first element and the page never scrolls.
 // ══════════════════════════════════════════════════════════════
 function _authFocusables() {
   return [...document.querySelectorAll('#auth-screen [tabindex]')]
     .filter(el => el.offsetParent !== null);
 }
+
 function _authMoveFocus(dir) {
   const items = _authFocusables();
   if (!items.length) return;
+
   const cur = items.indexOf(document.activeElement);
+
   let next = cur + dir;
   if (next < 0) next = 0;
   if (next >= items.length) next = items.length - 1;
+
   const el = items[next];
-  if (el) { el.focus(); el.scrollIntoView({ block: 'nearest' }); }
+  if (el) {
+    el.focus();
+    el.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 document.addEventListener('keydown', (e) => {
   const authScreen = document.getElementById('auth-screen');
   if (!authScreen || window.getComputedStyle(authScreen).display === 'none') return;
 
-  if (e.key === 'ArrowDown') { e.preventDefault(); _authMoveFocus(1);  return; }
-  if (e.key === 'ArrowUp')   { e.preventDefault(); _authMoveFocus(-1); return; }
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _authMoveFocus(1);
+    return;
+  }
+
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _authMoveFocus(-1);
+    return;
+  }
 
   if (e.key === 'Enter') {
     const active = document.activeElement;
-    // CloudPhone relays the raw keydown but doesn't synthesize a native
-    // click from it, so a focused link never activates on its own —
-    // navigate explicitly, the same way the login button is handled below.
+
+    if (active?.id === 'guest-login-btn') {
+      e.preventDefault();
+      startGuestMode();
+      return;
+    }
+
     if (active?.tagName === 'A' && active.href) {
       e.preventDefault();
       window.location.href = active.href;
       return;
     }
+
     e.preventDefault();
     signInWithGoogle();
   }
@@ -76,16 +94,14 @@ document.addEventListener('keydown', (e) => {
 async function initAuth() {
   _supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  // ── Scope version gate ─────────────────────────────────────────────────────
   // Increment APP_SCOPE_VERSION whenever OAuth scopes change.
-  // This clears the stored refresh token so users re-consent with new scopes.
-  const APP_SCOPE_VERSION = 'v2_file'; // drive → drive.file migration
+  const APP_SCOPE_VERSION = 'v2_file';
+
   if (localStorage.getItem('emu_scope_v') !== APP_SCOPE_VERSION) {
     localStorage.removeItem('emu_rt');
     localStorage.setItem('emu_scope_v', APP_SCOPE_VERSION);
     dbgAuth('Scope version changed — cleared stored refresh token');
   }
-  // ──────────────────────────────────────────────────────────────────────────
 
   const { data: sessionData } = await _supabase.auth.getSession();
   const session = sessionData?.session;
@@ -93,20 +109,24 @@ async function initAuth() {
   if (session?.user) {
     if (!session.provider_token) {
       dbgAuth('Session missing provider_token — needs re-auth for Drive scopes');
+
       await _supabase.auth.signOut();
+
       showAuthScreen();
       setAuthStatus('Please sign in again to enable Drive access.', 'err');
+
       _authReadyResolve(null);
       return;
     }
-    
+
     window._providerToken = session.provider_token;
-    
+
     if (session.provider_refresh_token) {
       localStorage.setItem('emu_rt', session.provider_refresh_token);
     }
+
     window._providerRefreshToken = localStorage.getItem('emu_rt');
-    
+
     handleSignedIn(session.user);
   } else {
     showAuthScreen();
@@ -116,12 +136,13 @@ async function initAuth() {
   _supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session?.user) {
       window._providerToken = session.provider_token || null;
-      
+
       if (session.provider_refresh_token) {
         localStorage.setItem('emu_rt', session.provider_refresh_token);
       }
+
       window._providerRefreshToken = localStorage.getItem('emu_rt');
-      
+
       handleSignedIn(session.user);
     } else if (event === 'SIGNED_OUT') {
       handleSignedOut();
@@ -140,35 +161,50 @@ function handleSignedIn(user) {
     email: user.email,
     name:  user.user_metadata?.full_name || user.email.split('@')[0]
   };
+
   window._supabaseClient = _supabase;
+
   dbgAuth('Signed in: ' + window.currentUser.name);
   dbgAuth('provider_token present: '         + !!window._providerToken);
   dbgAuth('provider_refresh_token present: ' + !!window._providerRefreshToken);
+
   hideAuthScreen();
   showUserBar();
+
   _authReadyResolve(window.currentUser);
 
-  if (typeof window.onAuthSuccess === 'function') window.onAuthSuccess(window.currentUser);
+  if (typeof window.onAuthSuccess === 'function') {
+    window.onAuthSuccess(window.currentUser);
+  }
 }
 
 function handleSignedOut() {
   window.currentUser           = null;
   window._providerToken        = null;
   window._providerRefreshToken = null;
-  localStorage.removeItem('emu_rt'); 
+
+  localStorage.removeItem('emu_rt');
+
   dbgAuth('Signed out');
+
   showAuthScreen();
+
   document.getElementById('selector').style.display        = 'none';
   document.getElementById('emulator-screen').style.display = 'none';
 }
 
 async function signInWithGoogle() {
-  if (!_supabase) { setAuthStatus('Auth not ready', 'err'); return; }
+  if (!_supabase) {
+    setAuthStatus('Auth not ready', 'err');
+    return;
+  }
+
   setAuthStatus('Opening Google sign-in...', '');
-  
+
   const hasToken = !!localStorage.getItem('emu_rt');
+
   const qParams = { access_type: 'offline' };
-  
+
   if (!hasToken) {
     qParams.prompt = 'consent';
   }
@@ -182,6 +218,7 @@ async function signInWithGoogle() {
         queryParams: qParams,
       }
     });
+
     if (error) throw error;
   } catch (err) {
     dbgAuth('OAuth ERR: ' + err.message);
@@ -189,29 +226,68 @@ async function signInWithGoogle() {
   }
 }
 
+function startGuestMode() {
+  window.APP_MODE = 'guest';
+
+  window.currentUser = {
+    id: 'guest',
+    email: '',
+    name: 'GUEST'
+  };
+
+  window._providerToken = null;
+  window._providerRefreshToken = null;
+
+  const nameEl = document.getElementById('auth-user-name');
+  if (nameEl) nameEl.textContent = 'GUEST';
+
+  hideAuthScreen();
+  showUserBar();
+
+  _authReadyResolve(window.currentUser);
+
+  if (typeof window.onGuestSuccess === 'function') {
+    window.onGuestSuccess(window.currentUser);
+  } else if (typeof window.onAuthSuccess === 'function') {
+    window.onAuthSuccess(window.currentUser);
+  }
+}
+
 async function signOut() {
+  if (window.APP_MODE === 'guest') {
+    window.location.reload();
+    return;
+  }
+
   if (!_supabase) return;
+
   await _supabase.auth.signOut();
 }
 
 async function _workerRefresh() {
   const rt = window._providerRefreshToken;
+
   if (!rt) {
     dbgAuth('Worker refresh skipped — no refresh_token stored');
     return null;
   }
+
   dbgAuth('Attempting worker token refresh...');
+
   try {
-    const res  = await fetch(WORKER_URL, {
+    const res = await fetch(WORKER_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ refresh_token: rt }),
     });
+
     const data = await res.json();
+
     if (!res.ok || !data.access_token) {
       dbgAuth('Worker refresh failed: ' + (data.error || res.status));
       return null;
     }
+
     dbgAuth('Worker refresh OK — new token received');
     return data.access_token;
   } catch (err) {
@@ -226,13 +302,17 @@ async function getDriveToken() {
   if (window._providerToken) return window._providerToken;
 
   dbgAuth('No provider_token — trying Supabase session refresh');
+
   try {
     const { data, error } = await _supabase.auth.refreshSession();
+
     if (!error && data?.session?.provider_token) {
       window._providerToken = data.session.provider_token;
+
       if (data.session.provider_refresh_token) {
         window._providerRefreshToken = data.session.provider_refresh_token;
       }
+
       dbgAuth('Supabase session refresh OK');
       return window._providerToken;
     }
@@ -241,6 +321,7 @@ async function getDriveToken() {
   }
 
   const freshToken = await _workerRefresh();
+
   if (freshToken) {
     window._providerToken = freshToken;
     return freshToken;
@@ -249,11 +330,15 @@ async function getDriveToken() {
   dbgAuth('All token refresh strategies exhausted');
   return null;
 }
+
 window.getDriveToken = getDriveToken;
 
 async function driveApiFetch(url, options = {}) {
   let token = await getDriveToken();
-  if (!token) throw new Error('No Drive token available — please sign out and sign in again');
+
+  if (!token) {
+    throw new Error('No Drive token available — please sign out and sign in again');
+  }
 
   const doFetch = (t) => fetch(url, {
     ...options,
@@ -264,15 +349,21 @@ async function driveApiFetch(url, options = {}) {
 
   if (res.status === 401) {
     dbgAuth('Drive 401 — clearing cached token and retrying via refresh chain');
+
     window._providerToken = null;
     token = await getDriveToken();
-    if (!token) throw new Error('Drive re-auth failed — please sign out and sign in again');
+
+    if (!token) {
+      throw new Error('Drive re-auth failed — please sign out and sign in again');
+    }
+
     res = await doFetch(token);
   }
 
   if (res.status === 403) {
     const body   = await res.clone().json().catch(() => ({}));
     const reason = body?.error?.errors?.[0]?.reason || '';
+
     if (reason === 'insufficientPermissions') {
       throw new Error('INSUFFICIENT_PERMISSIONS');
     }
@@ -280,33 +371,45 @@ async function driveApiFetch(url, options = {}) {
 
   return res;
 }
+
 window.driveApiFetch = driveApiFetch;
 
 async function getAuthToken() {
   if (!_supabase) return SUPABASE_ANON_KEY;
+
   const { data } = await _supabase.auth.getSession();
   return data?.session?.access_token || SUPABASE_ANON_KEY;
 }
+
 window.getAuthToken = getAuthToken;
 
 function showAuthScreen() {
   document.getElementById('auth-screen').style.display = 'flex';
+
   setTimeout(() => {
     const loginBtn = document.getElementById('google-login-btn');
     if (loginBtn) loginBtn.focus();
   }, 100);
 }
-function hideAuthScreen() { document.getElementById('auth-screen').style.display = 'none'; }
+
+function hideAuthScreen() {
+  document.getElementById('auth-screen').style.display = 'none';
+}
 
 function showUserBar() {
   const bar = document.getElementById('auth-user-bar');
   if (!bar || !window.currentUser) return;
+
+  const nameEl = document.getElementById('auth-user-name');
+  if (nameEl) nameEl.textContent = window.currentUser.name || '';
+
   bar.style.display = 'flex';
 }
 
 function setAuthStatus(msg, cls) {
   const el = document.getElementById('auth-status');
   if (!el) return;
+
   el.textContent = msg;
   el.className   = 'auth-status' + (cls ? ' ' + cls : '');
 }

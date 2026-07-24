@@ -189,18 +189,6 @@ html, body {
   margin-bottom: 20px;
 }
 
-.auth-icon {
-  margin-bottom: 20px;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 0 12px rgba(0,255,65,0.25));
-  animation: iconPulse 4s ease-in-out infinite alternate;
-}
-
-@keyframes iconPulse {
-  0%   { filter: drop-shadow(0 0 12px rgba(0,255,65,0.25)); }
-  100% { filter: drop-shadow(0 0 20px rgba(0,255,65,0.4)); }
-}
-
 .auth-card {
   width: 100%;
   background: var(--surface);
@@ -282,11 +270,6 @@ html, body {
   left: 100%;
 }
 
-.auth-google-btn svg {
-  flex-shrink: 0;
-  pointer-events: none;
-}
-
 .auth-status {
   font-size: 8px;
   color: var(--text-dim);
@@ -334,6 +317,28 @@ html, body {
   border: 1px solid color-mix(in srgb, var(--sc, #555) 25%, transparent);
   color: var(--sc, #888);
   letter-spacing: 1px;
+}
+
+.auth-links {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.auth-links a {
+  font-family: var(--font-mono);
+  font-size: 7px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.auth-links a:focus {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+  color: var(--green);
 }
 
 .auth-user-bar {
@@ -387,6 +392,32 @@ html, body {
   color: var(--red);
   border-color: var(--red);
   background: rgba(255,71,87,0.08);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GUEST AUTH BUTTON
+══════════════════════════════════════════════════════════════ */
+
+.auth-guest-btn {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  color: var(--gold);
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  letter-spacing: 1px;
+  padding: 12px 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+
+.auth-guest-btn:hover,
+.auth-guest-btn:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  background: rgba(255, 215, 0, 0.06);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1141,6 +1172,57 @@ body.landscape #keybinds-overlay {
 .confirm-hint span {
   color: var(--gold);
   font-weight: 700;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GUEST EXPORT PROMPT
+══════════════════════════════════════════════════════════════ */
+
+#guest-export-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(4, 4, 8, 0.96);
+  z-index: 99999;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  text-align: center;
+}
+
+#guest-export-overlay.visible {
+  display: flex;
+}
+
+.guest-export-title {
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--gold);
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.25);
+}
+
+.guest-export-msg {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-dim);
+  max-width: 240px;
+  line-height: 1.7;
+}
+
+.guest-export-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--text);
 }
 
 /* ══════════════════════════════════════════════════════════════
