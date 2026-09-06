@@ -1862,6 +1862,10 @@ function _showRomOptions() {
   document.getElementById('rom-options-title').textContent = rom.name.toUpperCase();
   _renderRomOptions();
   overlay.classList.add('visible');
+
+  // Reset scroll position to the top every time it opens
+  const list = document.getElementById('rom-options-list');
+  if (list) list.scrollTop = 0;
 }
 
 function _closeRomOptions() {
@@ -1886,6 +1890,10 @@ function _navigateRomOptions(dir) {
   if (!_romOptions.length) return;
   _romOptionsIndex = (_romOptionsIndex + dir + _romOptions.length) % _romOptions.length;
   _renderRomOptions();
+
+  // Scroll the selected option into view inside the list
+  const items = document.querySelectorAll('.rom-option-item');
+  items[_romOptionsIndex]?.scrollIntoView({ block: 'nearest' });
 }
 
 async function _confirmRomOption() {
