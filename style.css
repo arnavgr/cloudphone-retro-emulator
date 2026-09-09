@@ -1,5 +1,5 @@
 /* ══════════════════════════════════════════════════════════════
-   RETRO EMU — Complete UI Overhaul
+   RETRO EMU — UI STYLES
 ══════════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -308,56 +308,8 @@ html, body {
   color: var(--green);
 }
 
-.auth-user-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 3px 5px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.auth-user-name {
-  font-family: var(--font-mono);
-  font-size: 7px;
-  color: var(--green);
-  letter-spacing: 0.3px;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.auth-sign-out {
-  color: var(--text-dim);
-  background: none;
-  border: 1px solid transparent;
-  font-family: var(--font-mono);
-  font-size: 7px;
-  font-weight: 700;
-  cursor: pointer;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: 1px 3px;
-  border-radius: 2px;
-  transition: all 0.15s;
-}
-
-.auth-sign-out:focus {
-  outline: 2px solid var(--green);
-  outline-offset: 1px;
-  color: var(--red);
-  border-color: var(--red);
-  background: rgba(255,71,87,0.08);
-}
-
 /* ══════════════════════════════════════════════════════════════
-   SELECTOR SCREEN
+   SELECTOR SCREEN & NON-WRAPPING HEADER
 ══════════════════════════════════════════════════════════════ */
 
 #selector {
@@ -383,19 +335,29 @@ html, body {
   border-bottom: 1px solid var(--border);
   margin-bottom: 4px;
   flex-shrink: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-shrink: 0;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-width: 0;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.auth-user-bar {
+  display: flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: none;
 }
 
 .logo {
@@ -404,6 +366,7 @@ html, body {
   letter-spacing: 2px;
   color: var(--green);
   text-shadow: 0 0 10px rgba(0,255,65,0.3);
+  white-space: nowrap;
 }
 
 .icon-btn {
@@ -418,6 +381,11 @@ html, body {
   justify-content: center;
   transition: all 0.15s;
   flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  border-color: var(--green);
+  color: var(--green);
 }
 
 .icon-btn:focus {
@@ -1021,7 +989,7 @@ html, body {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   LANDSCAPE MODE (CSS HARDWARE ROTATION)
+   LANDSCAPE MODE (CSS ROTATION)
 ══════════════════════════════════════════════════════════════ */
 
 body.landscape #emulator-screen,

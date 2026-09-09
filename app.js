@@ -281,6 +281,87 @@ let _isFastForward = false;
 const _log = [];
 
 // ══════════════════════════════════════════════════════════════
+// AUDIO ENGINE (AUTOPLAY RESUME & VOLUME CONTROLS)
+// ══════════════════════════════════════════════════════════════
+let _audioEnabled = (() => {
+  try { return localStorage.getItem('emu_audio_pref') === '1'; } catch { return false; }
+})();
+
+let _audioVolume = (() => {
+  try {
+    const v = localStorage.getItem('emu_volume');
+    return v !== null ? parseFloat(v) : 0.75;
+  } catch { return 0.75; }
+})();
+
+const _trackedAudioContexts = new Set();
+const _OrigAudioContext = window.AudioContext || window.webkitAudioContext;
+
+if (_OrigAudioContext) {
+  const PatchedAudioContext = function(...args) {
+    const ctx = new _OrigAudioContext(...args);
+    _trackedAudioContexts.add(ctx);
+    return ctx;
+  };
+  PatchedAudioContext.prototype = _OrigAudioContext.prototype;
+  try {
+    window.AudioContext = PatchedAudioContext;
+    if (window.webkitAudioContext) window.webkitAudioContext = PatchedAudioContext;
+  } catch {}
+}
+
+function _unlockAudioContext() {
+  try {
+    if (_OrigAudioContext) {
+      const tempCtx = new _OrigAudioContext();
+      _trackedAudioContexts.add(tempCtx);
+      tempCtx.resume().catch(() => {});
+    }
+  } catch {}
+}
+
+function _resumeAudio() {
+  if (!_audioEnabled) return;
+  for (const ctx of _trackedAudioContexts) {
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  }
+}
+
+function _applyAudioSettings() {
+  const effectiveVol = _audioEnabled ? _audioVolume : 0;
+  try {
+    const gm = window.EJS_emulator?.gameManager;
+    if (gm?.setVolume) {
+      gm.setVolume(effectiveVol);
+    } else if (window.EJS_emulator?.setVolume) {
+      window.EJS_emulator.setVolume(effectiveVol);
+    }
+  } catch {}
+
+  if (_audioEnabled) {
+    _resumeAudio();
+  }
+}
+
+function _adjustVolume(delta) {
+  _audioVolume = Math.round(Math.max(0, Math.min(1, _audioVolume + delta)) * 100) / 100;
+  if (!_audioEnabled && delta > 0) _audioEnabled = true;
+  try {
+    localStorage.setItem('emu_volume', _audioVolume.toString());
+    localStorage.setItem('emu_audio_pref', _audioEnabled ? '1' : '0');
+  } catch {}
+  _applyAudioSettings();
+}
+
+function _toggleAudio() {
+  _audioEnabled = !_audioEnabled;
+  try { localStorage.setItem('emu_audio_pref', _audioEnabled ? '1' : '0'); } catch {}
+  _applyAudioSettings();
+}
+
+// ══════════════════════════════════════════════════════════════
 // LOGGING
 // ══════════════════════════════════════════════════════════════
 function dbg(msg) {
@@ -1390,29 +1471,8 @@ async function _gcRomArtifacts(rom) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// FAST FORWARD & AUDIO GUARDS
+// FAST FORWARD
 // ══════════════════════════════════════════════════════════════
-let _audioEnabled = (() => {
-  try { return localStorage.getItem('emu_audio_pref') === '1'; } catch { return false; }
-})();
-
-function _installAudioLatencyGuard() {
-  if (window._emuAudioGuard) return;
-  const AC = window.AudioContext || window.webkitAudioContext;
-  if (!AC) return;
-
-  function GuardedAudioContext(options = {}) {
-    const opts = Object.assign({}, options);
-    if (!opts.latencyHint) opts.latencyHint = 'playback';
-    return new AC(opts);
-  }
-  GuardedAudioContext.prototype = AC.prototype;
-  try { Object.setPrototypeOf(GuardedAudioContext, AC); } catch {}
-  window.AudioContext = GuardedAudioContext;
-  if (window.webkitAudioContext) window.webkitAudioContext = GuardedAudioContext;
-  window._emuAudioGuard = true;
-}
-
 function _toggleFastForward() {
   const gm = window.EJS_emulator?.gameManager;
   if (!gm) return;
@@ -1666,7 +1726,7 @@ function _applyEnabledCheats(rom) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// IN-GAME & SELECTOR OPTIONS OVERLAY
+// IN-GAME & SELECTOR OPTIONS OVERLAYS
 // ══════════════════════════════════════════════════════════════
 function _showInGameMenu() {
   if (!_currentRom) return;
@@ -1674,13 +1734,7 @@ function _showInGameMenu() {
   try { window.EJS_emulator?.gameManager?.pause(); } catch {}
 
   _romOptionsIndex = 0;
-  _romOptions = [
-    'RESUME',
-    'CHEATS',
-    'AUDIO: ' + (_audioEnabled ? 'ON' : 'OFF'),
-    'RESTART GAME',
-    'EXIT GAME'
-  ];
+  _buildInGameMenuOptions();
 
   const overlay = document.getElementById('rom-options-overlay');
   if (!overlay) return;
@@ -1692,10 +1746,23 @@ function _showInGameMenu() {
   if (list) list.scrollTop = 0;
 }
 
+function _buildInGameMenuOptions() {
+  _romOptions = [
+    'RESUME',
+    'AUDIO: ' + (_audioEnabled ? 'ON' : 'OFF'),
+    'VOL UP (' + Math.round(_audioVolume * 100) + '%)',
+    'VOL DOWN (' + Math.round(_audioVolume * 100) + '%)',
+    'CHEATS',
+    'RESTART GAME',
+    'EXIT GAME'
+  ];
+}
+
 function _closeInGameMenu() {
   _inGameMenuOpen = false;
   document.getElementById('rom-options-overlay')?.classList.remove('visible');
   try { window.EJS_emulator?.gameManager?.resume(); } catch {}
+  _resumeAudio();
 }
 
 function _toggleInGameMenu() {
@@ -1714,6 +1781,8 @@ function _getRomOptions(rom) {
 
   opts.push(cheatCount ? `CHEATS (${cheatCount})` : 'CHEATS');
   opts.push('AUDIO: ' + (_audioEnabled ? 'ON' : 'OFF'));
+  opts.push('VOL UP (' + Math.round(_audioVolume * 100) + '%)');
+  opts.push('VOL DOWN (' + Math.round(_audioVolume * 100) + '%)');
   opts.push('REMOVE FROM LIST');
   return opts;
 }
@@ -1768,14 +1837,16 @@ async function _confirmRomOption() {
     } else if (choice === 'CHEATS') {
       _openCheats();
     } else if (choice.startsWith('AUDIO:')) {
-      _audioEnabled = !_audioEnabled;
-      try { localStorage.setItem('emu_audio_pref', _audioEnabled ? '1' : '0'); } catch {}
-      try {
-        if (window.EJS_emulator?.gameManager?.setVolume) {
-          window.EJS_emulator.gameManager.setVolume(_audioEnabled ? 1.0 : 0.0);
-        }
-      } catch {}
-      _romOptions[_romOptionsIndex] = 'AUDIO: ' + (_audioEnabled ? 'ON' : 'OFF');
+      _toggleAudio();
+      _buildInGameMenuOptions();
+      _renderRomOptions();
+    } else if (choice.startsWith('VOL UP')) {
+      _adjustVolume(0.25);
+      _buildInGameMenuOptions();
+      _renderRomOptions();
+    } else if (choice.startsWith('VOL DOWN')) {
+      _adjustVolume(-0.25);
+      _buildInGameMenuOptions();
       _renderRomOptions();
     } else if (choice === 'RESTART GAME') {
       _closeInGameMenu();
@@ -1803,13 +1874,26 @@ async function _confirmRomOption() {
   }
 
   if (choice.startsWith('AUDIO:')) {
-    _audioEnabled = !_audioEnabled;
-    try { localStorage.setItem('emu_audio_pref', _audioEnabled ? '1' : '0'); } catch {}
-    if (_audioEnabled) _installAudioLatencyGuard();
+    _toggleAudio();
     _romOptions = _getRomOptions(rom);
-    _romOptionsIndex = Math.max(0, _romOptions.findIndex(o => o.startsWith('AUDIO:')));
     _renderRomOptions();
-    _setSelectorStatus('AUDIO ' + (_audioEnabled ? 'ON' : 'OFF'), 1500);
+    _setSelectorStatus('AUDIO ' + (_audioEnabled ? 'ON' : 'OFF'), 1200);
+    return;
+  }
+
+  if (choice.startsWith('VOL UP')) {
+    _adjustVolume(0.25);
+    _romOptions = _getRomOptions(rom);
+    _renderRomOptions();
+    _setSelectorStatus('VOL: ' + Math.round(_audioVolume * 100) + '%', 1200);
+    return;
+  }
+
+  if (choice.startsWith('VOL DOWN')) {
+    _adjustVolume(-0.25);
+    _romOptions = _getRomOptions(rom);
+    _renderRomOptions();
+    _setSelectorStatus('VOL: ' + Math.round(_audioVolume * 100) + '%', 1200);
     return;
   }
 
@@ -1839,31 +1923,6 @@ async function _confirmRomOption() {
     _romIndex = Math.min(_romIndex, Math.max(0, _filteredRoms.length - 1));
     _setSelectorStatus('REMOVED: ' + rom.name.toUpperCase());
   }
-}
-
-// ══════════════════════════════════════════════════════════════
-// T9 ALPHANUMERIC QUICK JUMP
-// ══════════════════════════════════════════════════════════════
-const T9_MAP = {
-  '2': 'ABC', '3': 'DEF', '4': 'GHI', '5': 'JKL',
-  '6': 'MNO', '7': 'PQRS', '8': 'TUV', '9': 'WXYZ',
-};
-
-function _t9Jump(key) {
-  const letters = T9_MAP[key];
-  if (!letters || !_filteredRoms.length) return;
-  const n = _filteredRoms.length;
-
-  for (let step = 1; step <= n; step++) {
-    const idx = (_romIndex + step) % n;
-    const first = (_filteredRoms[idx].name || '').trim().charAt(0).toUpperCase();
-    if (letters.includes(first)) {
-      _updateSelection(idx);
-      _setSelectorStatus('→ ' + _filteredRoms[idx].name.toUpperCase().slice(0, 16), 800);
-      return;
-    }
-  }
-  _setSelectorStatus('NO ' + letters + ' TITLES', 1200);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -2276,6 +2335,8 @@ async function launchRom(index) {
   const rom = _filteredRoms[index];
   if (!rom || !window.currentUser) return;
 
+  _unlockAudioContext();
+
   _currentRom = rom;
   _saveConfirmPending = false;
   _isFastForward = false;
@@ -2342,14 +2403,15 @@ async function _bootEJS(rom, romUrl) {
   window.EJS_disableDatabases = true;
   window.EJS_core_options = { video_filter: 'none' };
 
-  if (_audioEnabled) _installAudioLatencyGuard();
-
   const biosLoaded = await _loadBios(rom.core);
   if (!biosLoaded) dbg('Starting ' + rom.name + ' without BIOS (HLE mode)');
 
   const onGameStart = () => {
     const loadingMsg = document.getElementById('loading-msg');
     if (loadingMsg) loadingMsg.style.display = 'none';
+
+    _applyAudioSettings();
+    _resumeAudio();
 
     _setSaveStatus('READY', 'active');
     _clearSaveStatus();
@@ -2392,6 +2454,8 @@ async function _bootEJS(rom, romUrl) {
 
   _injectBatterySave(rom);
 
+  const effectiveVol = _audioEnabled ? _audioVolume : 0;
+
   if (typeof window.EJS === 'function') {
     const playerEl = document.getElementById('emulator-wrapper');
     if (!playerEl) return;
@@ -2402,6 +2466,7 @@ async function _bootEJS(rom, romUrl) {
       gameName: rom.file,
       startOnLoad: true,
       muted: !_audioEnabled,
+      volume: effectiveVol,
       color: '#00ff41',
       backgroundColor: '#000000',
       defaultControls,
@@ -2422,6 +2487,7 @@ async function _bootEJS(rom, romUrl) {
     window.EJS_core = rom.core;
     window.EJS_startOnLoaded = true;
     window.EJS_muted = !_audioEnabled;
+    window.EJS_volume = effectiveVol;
     window.EJS_color = '#00ff41';
     window.EJS_backgroundColor = '#000000';
     window.EJS_onGameStart = onGameStart;
@@ -2546,12 +2612,6 @@ document.addEventListener('keydown', (e) => {
       return;
     }
 
-    if (T9_MAP[e.key]) {
-      e.preventDefault();
-      _t9Jump(e.key);
-      return;
-    }
-
     const f = document.activeElement;
     const isCatBtn = f?.classList.contains('cat-btn');
     const isRomItem = f?.classList.contains('rom-item');
@@ -2615,6 +2675,8 @@ document.addEventListener('keydown', (e) => {
   }
 
   if (inEmu) {
+    _resumeAudio();
+
     if (_cheatsOpen) {
       if (e.key === 'ArrowUp')   { e.preventDefault(); _navigateCheats(-1); return; }
       if (e.key === 'ArrowDown') { e.preventDefault(); _navigateCheats(1); return; }
@@ -2702,8 +2764,6 @@ document.getElementById('rom-refresh-btn')?.addEventListener('click', () => {
 window.onAuthSuccess = function(user) {
   _markTokenFresh();
   dbg('Auth success: ' + user.name + ' | screen: ' + SCREEN.toString());
-  const nameEl = document.querySelector('.auth-user-name');
-  if (nameEl && user?.name) nameEl.textContent = user.name;
 
   document.getElementById('selector').style.display = 'flex';
   _loadGis().catch(() => {});
